@@ -1,0 +1,27 @@
+{
+  "name": "cmp-demo",
+  "version": "1.0.0",
+  "description": "CMP Demo - Distributed compute across 5 phones",
+  "main": "index.js",
+  "scripts": {
+    "start": "react-native start",
+    "android": "react-native run-android",
+    "ios": "react-native run-ios",
+    "test": "jest"
+  },
+  "dependencies": {
+    "react": "18.2.0",
+    "react-native": "0.74.0",
+    "react-native-wifi-p2p": "^2.1.0",
+    "react-native-svg": "^15.0.0",
+    "react-native-reanimated": "^3.8.0",
+    "react-native-device-info": "^11.0.0",
+    "@cmp/core": "file:../packages/core",
+    "@cmp/runtime": "file:../packages/runtime"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "@types/react-native": "^0.73.0",
+    "typescript": "^5.4.0"
+  }
+}

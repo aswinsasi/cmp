@@ -1,0 +1,16 @@
+{
+  "name": "cmp",
+  "version": "1.0.0",
+  "description": "Compute Mesh Protocol - Decentralized proximity-based distributed computation",
+  "author": "Agent Viscro",
+  "license": "MIT",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "clean": "rm -rf packages/*/dist"
+  }
+}
