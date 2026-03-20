@@ -117,48 +117,49 @@ export class LANTransport implements ITransport {
     if (!this.running) throw new Error('Transport not running');
     if (data.length > MAX_TCP_MESSAGE) throw new Error(`Payload too large: ${data.length}`);
 
-    // Try TCP first
-    try {
-      let socket = this.peerConnections.get(peerAddress);
+    const [host] = peerAddress.split(':');
 
-      if (socket && (socket.destroyed || !socket.writable || socket.readableEnded)) {
-        this.peerConnections.delete(peerAddress);
-        socket = undefined;
-      }
+    // For small messages (< 60KB): send via UDP immediately (fast path)
+    // AND try TCP in background (establishes connection for future use)
+    if (data.length < 60000 && this.udpSocket && host) {
+      const prefixed = Buffer.alloc(1 + data.length);
+      prefixed[0] = LANTransport.UDP_MSG_PREFIX;
+      prefixed.set(data, 1);
+      this.udpSocket.send(prefixed, 0, prefixed.length, CMP_UDP_PORT, host, () => {});
 
-      if (!socket) {
-        socket = await this.connectToPeer(peerAddress);
-      }
-
-      const frame = Buffer.alloc(FRAME_HEADER_SIZE + data.length);
-      frame.writeUInt32BE(data.length, 0);
-      frame.set(data, FRAME_HEADER_SIZE);
-
-      await new Promise<void>((resolve, reject) => {
-        socket!.write(frame, (err) => { if (err) reject(err); else resolve(); });
-      });
+      // Try TCP in background (non-blocking) to establish connection for large payloads later
+      this.ensureTCPConnection(peerAddress).catch(() => {});
       return;
-    } catch {
-      // TCP failed — fall back to UDP for small messages
     }
 
-    // UDP fallback (works on hotspots where TCP is blocked)
-    // Messages under 60KB are safe for UDP
-    if (data.length < 60000 && this.udpSocket) {
-      const [host] = peerAddress.split(':');
-      if (host) {
-        // Prepend 0xFE prefix so receiver knows this is a protocol message, not a beacon
-        const prefixed = Buffer.alloc(1 + data.length);
-        prefixed[0] = LANTransport.UDP_MSG_PREFIX;
-        prefixed.set(data, 1);
-        await new Promise<void>((resolve) => {
-          this.udpSocket!.send(prefixed, 0, prefixed.length, CMP_UDP_PORT, host, () => resolve());
-        });
-        return;
-      }
+    // For large messages: must use TCP
+    let socket = this.peerConnections.get(peerAddress);
+    if (socket && (socket.destroyed || !socket.writable || socket.readableEnded)) {
+      this.peerConnections.delete(peerAddress);
+      socket = undefined;
+    }
+    if (!socket) {
+      socket = await this.connectToPeer(peerAddress);
     }
 
-    throw new Error(`Cannot reach ${peerAddress}: TCP blocked and message too large for UDP`);
+    const frame = Buffer.alloc(FRAME_HEADER_SIZE + data.length);
+    frame.writeUInt32BE(data.length, 0);
+    frame.set(data, FRAME_HEADER_SIZE);
+
+    await new Promise<void>((resolve, reject) => {
+      socket!.write(frame, (err) => { if (err) reject(err); else resolve(); });
+    });
+  }
+
+  /**
+   * Try to establish TCP connection in background. Non-blocking.
+   */
+  private async ensureTCPConnection(peerAddress: string): Promise<void> {
+    const socket = this.peerConnections.get(peerAddress);
+    if (socket && !socket.destroyed && socket.writable) return;
+    try {
+      await this.connectToPeer(peerAddress);
+    } catch {}
   }
 
   async broadcast(data: Uint8Array): Promise<void> {
