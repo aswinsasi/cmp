@@ -193,9 +193,12 @@ export class LANTransport implements ITransport {
 
       this.udpSocket.bind(CMP_UDP_PORT, () => {
         try {
+          // Enable broadcast (works on hotspots where multicast doesn't)
+          this.udpSocket!.setBroadcast(true);
+          // Also try multicast (works on routers/LAN)
           this.udpSocket!.addMembership(CMP_MULTICAST_ADDR);
           this.udpSocket!.setMulticastTTL(4);
-          this.udpSocket!.setMulticastLoopback(true);  // ENABLED — critical for same-machine
+          this.udpSocket!.setMulticastLoopback(true);
         } catch {}
         resolve();
       });
@@ -239,8 +242,14 @@ export class LANTransport implements ITransport {
     packet.writeUInt16BE(this.tcpPort, 8);
     packet.set(this.beaconData, UDP_HEADER_SIZE);
 
+    // Send via multicast (works on routers/LAN)
     try {
       this.udpSocket.send(packet, 0, packet.length, CMP_UDP_PORT, CMP_MULTICAST_ADDR);
+    } catch {}
+
+    // Also send via broadcast (works on mobile hotspots where multicast is blocked)
+    try {
+      this.udpSocket.send(packet, 0, packet.length, CMP_UDP_PORT, '255.255.255.255');
     } catch {}
   }
 
@@ -316,4 +325,19 @@ export class LANTransport implements ITransport {
   getTcpPort(): number { return this.tcpPort; }
   get connectedPeerCount(): number { return this.peerConnections.size; }
   getConnectedPeers(): string[] { return [...this.peerConnections.keys()]; }
+
+  /**
+   * Send beacon directly to a specific IP address.
+   * Used for manual peer connection when multicast/broadcast is blocked.
+   */
+  sendBeaconTo(ip: string): void {
+    if (!this.udpSocket || !this.beaconData) return;
+    const packet = Buffer.alloc(UDP_HEADER_SIZE + this.beaconData.length);
+    packet.set(this.instanceId, 0);
+    packet.writeUInt16BE(this.tcpPort, 8);
+    packet.set(this.beaconData, UDP_HEADER_SIZE);
+    try {
+      this.udpSocket.send(packet, 0, packet.length, CMP_UDP_PORT, ip);
+    } catch {}
+  }
 }

@@ -91,6 +91,7 @@ async function cmdStart(): Promise<void> {
   // ── Help ──
   console.log(`
   ${C.b}Commands:${C.r}
+    ${C.cyan}connect${C.r} <ip>         Connect to a peer by IP (for hotspots)
     ${C.cyan}encrypt${C.r} <message>   Encrypt text using mesh WASM cipher
     ${C.cyan}decrypt${C.r} <hex>       Decrypt hex ciphertext back to text
     ${C.cyan}peers${C.r}              Show connected peers
@@ -122,6 +123,19 @@ async function cmdStart(): Promise<void> {
         await doDecrypt(node, arg);
         break;
 
+      case 'connect':
+      case 'c':
+        if (!arg) {
+          console.log(`  ${C.d}Usage: connect <ip address>${C.r}`);
+          console.log(`  ${C.d}Example: connect 192.168.43.100${C.r}`);
+          console.log(`  ${C.d}Run 'ipconfig' on the other machine to find its IP${C.r}`);
+          break;
+        }
+        log('\u25cc', C.cyan, `Connecting to ${C.b}${arg}${C.r}...`);
+        node.connectTo(arg);
+        console.log(`  ${C.d}Beacon sent. Wait a few seconds for handshake.${C.r}`);
+        break;
+
       case 'peers':
       case 'p':
         doPeers(node);
@@ -136,6 +150,7 @@ async function cmdStart(): Promise<void> {
       case 'h':
         console.log(`
   ${C.b}Commands:${C.r}
+    ${C.cyan}connect${C.r} <ip>         Connect to a peer by IP (for hotspots)
     ${C.cyan}encrypt${C.r} <message>   Encrypt text using mesh WASM cipher
     ${C.cyan}decrypt${C.r} <hex>       Decrypt hex ciphertext back to text
     ${C.cyan}peers${C.r}              Show connected peers

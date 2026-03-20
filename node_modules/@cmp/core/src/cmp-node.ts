@@ -147,6 +147,7 @@ export class CMPNode {
   private executionEngine: ExecutionEngine;
   private distributor: TaskDistributor;
   private splitter: DataSplitter;
+  private lanTransport?: LANTransport;
 
   private running = false;
   private startTime = 0;
@@ -166,7 +167,9 @@ export class CMPNode {
     } else {
       const multi = new MultiTransport();
       if (this.config.transports.includes('lan')) {
-        multi.register(new LANTransport());
+        const lan = new LANTransport();
+        this.lanTransport = lan;
+        multi.register(lan);
       }
       this.transport = multi;
     }
@@ -523,6 +526,24 @@ export class CMPNode {
    */
   setAcceptingTasks(accepting: boolean): void {
     this.bidHandler.setAcceptingTasks(accepting);
+  }
+
+  /**
+   * Manually connect to a peer by IP address.
+   * Used when multicast/broadcast is blocked (e.g., mobile hotspots).
+   * Sends a direct UDP beacon to the IP, triggering normal discovery flow.
+   */
+  connectTo(ip: string): void {
+    if (!this.running) throw new Error('CMPNode not running');
+    if (this.lanTransport) {
+      log.info(`Manual connect: sending beacon to ${ip}`);
+      // Send multiple beacons to increase reliability
+      this.lanTransport.sendBeaconTo(ip);
+      setTimeout(() => this.lanTransport?.sendBeaconTo(ip), 500);
+      setTimeout(() => this.lanTransport?.sendBeaconTo(ip), 1500);
+    } else {
+      log.warn('No LAN transport available for manual connect');
+    }
   }
 
   // ── Internal ──
