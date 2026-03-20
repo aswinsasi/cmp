@@ -55,6 +55,8 @@ export class LANTransport implements ITransport {
     for (let i = 0; i < 8; i++) {
       this.instanceId[i] = Math.floor(Math.random() * 256);
     }
+    // Ensure first byte is never 0xFE (reserved for UDP protocol messages)
+    if (this.instanceId[0] === 0xFE) this.instanceId[0] = 0x00;
   }
 
   // ── Lifecycle ──
@@ -115,35 +117,69 @@ export class LANTransport implements ITransport {
     if (!this.running) throw new Error('Transport not running');
     if (data.length > MAX_TCP_MESSAGE) throw new Error(`Payload too large: ${data.length}`);
 
-    let socket = this.peerConnections.get(peerAddress);
+    // Try TCP first
+    try {
+      let socket = this.peerConnections.get(peerAddress);
 
-    // Check if existing connection is actually alive
-    if (socket && (socket.destroyed || !socket.writable || socket.readableEnded)) {
-      this.peerConnections.delete(peerAddress);
-      socket = undefined;
+      if (socket && (socket.destroyed || !socket.writable || socket.readableEnded)) {
+        this.peerConnections.delete(peerAddress);
+        socket = undefined;
+      }
+
+      if (!socket) {
+        socket = await this.connectToPeer(peerAddress);
+      }
+
+      const frame = Buffer.alloc(FRAME_HEADER_SIZE + data.length);
+      frame.writeUInt32BE(data.length, 0);
+      frame.set(data, FRAME_HEADER_SIZE);
+
+      await new Promise<void>((resolve, reject) => {
+        socket!.write(frame, (err) => { if (err) reject(err); else resolve(); });
+      });
+      return;
+    } catch {
+      // TCP failed — fall back to UDP for small messages
     }
 
-    // Create new connection if needed
-    if (!socket) {
-      socket = await this.connectToPeer(peerAddress);
+    // UDP fallback (works on hotspots where TCP is blocked)
+    // Messages under 60KB are safe for UDP
+    if (data.length < 60000 && this.udpSocket) {
+      const [host] = peerAddress.split(':');
+      if (host) {
+        // Prepend 0xFE prefix so receiver knows this is a protocol message, not a beacon
+        const prefixed = Buffer.alloc(1 + data.length);
+        prefixed[0] = LANTransport.UDP_MSG_PREFIX;
+        prefixed.set(data, 1);
+        await new Promise<void>((resolve) => {
+          this.udpSocket!.send(prefixed, 0, prefixed.length, CMP_UDP_PORT, host, () => resolve());
+        });
+        return;
+      }
     }
 
-    const frame = Buffer.alloc(FRAME_HEADER_SIZE + data.length);
-    frame.writeUInt32BE(data.length, 0);
-    frame.set(data, FRAME_HEADER_SIZE);
-
-    return new Promise((resolve, reject) => {
-      socket!.write(frame, (err) => { if (err) reject(err); else resolve(); });
-    });
+    throw new Error(`Cannot reach ${peerAddress}: TCP blocked and message too large for UDP`);
   }
 
   async broadcast(data: Uint8Array): Promise<void> {
     if (!this.running) throw new Error('Transport not running');
+
+    // Try TCP to all connected peers
     const promises: Promise<void>[] = [];
     for (const [addr] of this.peerConnections) {
       promises.push(this.sendTo(addr, data).catch(() => { this.peerConnections.delete(addr); }));
     }
     await Promise.allSettled(promises);
+
+    // Also broadcast via UDP for peers where TCP is blocked
+    if (this.udpSocket && data.length < 60000) {
+      const prefixed = Buffer.alloc(1 + data.length);
+      prefixed[0] = LANTransport.UDP_MSG_PREFIX;
+      prefixed.set(data, 1);
+      try {
+        this.udpSocket.send(prefixed, 0, prefixed.length, CMP_UDP_PORT, '255.255.255.255');
+      } catch {}
+    }
   }
 
   // ── Events ──
@@ -207,10 +243,32 @@ export class LANTransport implements ITransport {
 
   // ── UDP Beacon Handling ──
 
+  /** Prefix byte for protocol messages sent via UDP fallback */
+  private static readonly UDP_MSG_PREFIX = 0xFE;
+
   private handleUDP(msg: Buffer, rinfo: dgram.RemoteInfo): void {
+    if (msg.length < 2) return;
+
+    // Check if this is a protocol message (UDP fallback) or a beacon
+    if (msg[0] === LANTransport.UDP_MSG_PREFIX) {
+      // Protocol message via UDP fallback — strip prefix and emit as message
+      const payload = msg.slice(1);
+      const senderPort = this.peerTcpPorts.get(rinfo.address) || 0;
+      const peerAddress = senderPort ? `${rinfo.address}:${senderPort}` : `${rinfo.address}:${rinfo.port}`;
+
+      this.emit({
+        type: 'message',
+        peerAddress,
+        data: new Uint8Array(payload),
+        transport: this.name,
+        timestamp: Date.now(),
+      });
+      return;
+    }
+
+    // Otherwise treat as beacon
     if (msg.length < UDP_HEADER_SIZE) return;
 
-    // Check instanceId — ignore our own beacons
     const senderId = msg.slice(0, 8);
     let isOwn = true;
     for (let i = 0; i < 8; i++) {
@@ -218,7 +276,6 @@ export class LANTransport implements ITransport {
     }
     if (isOwn) return;
 
-    // Extract sender's TCP port and beacon payload
     const senderTcpPort = msg.readUInt16BE(8);
     const beaconPayload = new Uint8Array(msg.slice(UDP_HEADER_SIZE));
     const peerAddress = `${rinfo.address}:${senderTcpPort}`;
