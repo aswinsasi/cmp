@@ -16,7 +16,7 @@
  * @author Agent Viscro
  */
 
-import { ITransport, TransportEvent } from '../../transport/src/interface';
+import { ITransport, TransportEvent } from '../../../transport/src/interface';
 import {
   CMPTaskRequest,
   TaskType,

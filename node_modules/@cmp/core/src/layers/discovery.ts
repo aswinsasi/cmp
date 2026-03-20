@@ -15,7 +15,7 @@
  * @author Agent Viscro
  */
 
-import { ITransport, TransportEvent } from '../../transport/src/interface';
+import { ITransport, TransportEvent } from '../../../transport/src/interface';
 import { CMPBeacon, MessageType, BEACON_MAGIC } from '../types/beacon';
 import { MeshId, PublicKey } from '../types/primitives';
 import { encodeBeacon, decodeBeacon, createBeacon, isValidBeacon } from './beacon-codec';
@@ -130,12 +130,18 @@ export class DiscoveryLayer {
    */
   resolveAddress(meshId: MeshId): string | undefined {
     const hex = toHex(meshId);
-    // Return the latest address (last entry wins)
     let latest: string | undefined;
     for (const [addr, id] of this.addressToMeshId) {
       if (id === hex) latest = addr;
     }
     return latest;
+  }
+
+  /**
+   * Register a peer's address manually (used when bid arrives from unknown peer).
+   */
+  registerAddress(meshId: MeshId, address: string): void {
+    this.updateAddressMapping(address, toHex(meshId));
   }
 
   /**

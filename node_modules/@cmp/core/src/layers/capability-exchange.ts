@@ -14,7 +14,7 @@
  * @author Agent Viscro
  */
 
-import { ITransport, TransportEvent } from '../../transport/src/interface';
+import { ITransport, TransportEvent } from '../../../transport/src/interface';
 import { CMPCapability, CAPABILITY_REFRESH_MS } from '../types/capability';
 import { MeshId } from '../types/primitives';
 import { MessageType } from '../types/beacon';

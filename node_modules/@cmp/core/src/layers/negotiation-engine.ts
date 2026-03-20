@@ -15,7 +15,7 @@
  * @author Agent Viscro
  */
 
-import { ITransport } from '../../transport/src/interface';
+import { ITransport } from '../../../transport/src/interface';
 import {
   CMPTaskRequest,
   TaskType,
@@ -129,7 +129,7 @@ export class NegotiationEngine {
 
       switch (msg.type) {
         case MessageType.BID:
-          this.handleIncomingBid(msg.payload);
+          this.handleIncomingBid(msg.payload, event.peerAddress);
           break;
         case MessageType.ASSIGNMENT_ACK:
           this.handleAssignmentAck(msg.payload);
@@ -318,7 +318,7 @@ export class NegotiationEngine {
     });
   }
 
-  private handleIncomingBid(payload: Uint8Array): void {
+  private handleIncomingBid(payload: Uint8Array, peerAddress?: string): void {
     const data = decodeJSON<any>(payload);
     if (!data) {
       log.warn('Failed to decode bid payload');
@@ -334,6 +334,16 @@ export class NegotiationEngine {
       creditsRequested: data.creditsRequested,
       signature: new Uint8Array(64),
     };
+
+    // Register bidder's address if we don't already know them
+    // (critical for hotspot where discovery is one-directional)
+    if (peerAddress) {
+      const existing = this.discovery.resolveAddress(bid.bidderId);
+      if (!existing) {
+        log.info(`Registering unknown bidder ${shortId(bid.bidderId)} at ${peerAddress}`);
+        this.discovery.registerAddress(bid.bidderId, peerAddress);
+      }
+    }
 
     const taskHex = toHex(bid.taskId);
     const bids = this.pendingBids.get(taskHex);
@@ -361,10 +371,16 @@ export class NegotiationEngine {
       score: 0, // Scored later
     });
 
-    // Early resolution if we have enough bids
-    if (bids.length >= this.config.maxBids) {
+    // Early resolution if we have enough bids (minBids = 1 for fast response)
+    if (bids.length >= this.config.minBids) {
+      // Give a small grace period (200ms) for additional bids, then resolve
       const neg = this.activeNegotiations.get(taskHex);
-      if (neg) neg.resolve(bids);
+      if (neg) {
+        setTimeout(() => {
+          const currentBids = this.pendingBids.get(taskHex);
+          if (currentBids) neg.resolve(currentBids);
+        }, 200);
+      }
     }
   }
 
@@ -377,7 +393,17 @@ export class NegotiationEngine {
       .map((bid) => {
         // Get peer capability from map
         const cap = this.capMap.get(bid.bidderId);
-        if (!cap) return { bid, score: 0 };
+
+        if (!cap) {
+          // Unknown peer (e.g., hotspot - discovery was one-directional)
+          // Score based on bid's self-reported data + confidence
+          const timeFit = budget.deadlineMs > 0
+            ? Math.max(0, 1 - bid.estimatedTimeMs / budget.deadlineMs)
+            : 0.5;
+          const defaultScore = 0.3 + (timeFit * 0.2) + (bid.confidence * 0.1);
+          log.info(`Scoring unknown bidder ${shortId(bid.bidderId)}: ${defaultScore.toFixed(3)} (no capability data)`);
+          return { bid, score: defaultScore };
+        }
 
         // Resource match (40%)
         const coreFit = Math.min(1, (cap.cpu.coresAvailable) / Math.max(1, budget.minCores));
@@ -464,16 +490,15 @@ export class NegotiationEngine {
         continue;
       }
 
-      // Get peer capability for record
+      // Get peer capability (may be null for hotspot peers)
       const cap = this.capMap.get(bidderId);
-      if (!cap) continue;
 
       const assignment: CMPAssignment = {
         taskId,
         bidderId,
-        chunks: [randomBytes(16)], // Chunk IDs assigned in distribution phase
-        sessionKey: randomBytes(32), // Placeholder — real key from handshake
-        deadline: BigInt(Date.now() + 30000), // 30s deadline
+        chunks: [randomBytes(16)],
+        sessionKey: randomBytes(32),
+        deadline: BigInt(Date.now() + 30000),
         signature: new Uint8Array(64),
       };
 
@@ -489,9 +514,20 @@ export class NegotiationEngine {
       try {
         await this.transport.sendTo(peerAddress, msg);
 
+        // Build capability placeholder if not in map
+        const defaultCap: any = cap || {
+          cpu: { architecture: 'unknown', coresAvailable: 2, clockSpeedMhz: 2000, loadPercent: 50 },
+          memory: { availableMb: 1024, bandwidthMbps: 1000 },
+          gpu: { type: 0, computeUnits: 0, memoryMb: 0, features: [] },
+          storage: { scratchSpaceMb: 512, readSpeedMbps: 100, writeSpeedMbps: 100 },
+          power: { source: 1, batteryPct: 100, thermalState: 0 },
+          runtimes: [0],
+          reputationScore: 5000,
+        };
+
         const candidate: ScoredCandidate = {
           meshId: bidderId,
-          capability: cap,
+          capability: defaultCap,
           tier: 0 as any,
           score: winner.score,
         };
