@@ -78,7 +78,7 @@ export class WASMSandbox {
     });
 
     // Compile the module
-    this.module = await WebAssembly.compile(wasmBytes);
+    this.module = await WebAssembly.compile(wasmBytes as BufferSource);
 
     // Instantiate with sandboxed imports
     // ZERO access to: filesystem, network, sensors, system calls
@@ -124,6 +124,14 @@ export class WASMSandbox {
         },
       },
     });
+
+    // CRITICAL: If the WASM module exports its own memory, use THAT memory
+    // for all I/O. Modules with (memory (export "memory") 1) define their
+    // own memory internally — our env.memory import is ignored by them.
+    const exports = this.instance.exports as Record<string, any>;
+    if (exports.memory instanceof WebAssembly.Memory) {
+      this.memory = exports.memory;
+    }
   }
 
   /**
