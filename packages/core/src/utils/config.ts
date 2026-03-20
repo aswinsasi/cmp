@@ -61,7 +61,7 @@ export const DEFAULT_CONFIG: CMPConfig = {
   acceptingTasks: true,
 
   // Negotiation
-  bidWindowMs: 1500,
+  bidWindowMs: 8000,
   minBids: 1,
   maxBids: 20,
   scoringWeights: {
