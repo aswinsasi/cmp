@@ -26,7 +26,10 @@ import {
   VerifyMode,
   SecurityLevel,
 } from '../types/task';
-import { Runtime } from '../types/capability';
+import {
+  Runtime, Architecture, GPUType, GPUFeature, PowerSource, ThermalState,
+  CMPCapability,
+} from '../types/capability';
 import {
   CMPBid,
   CMPAssignment,
@@ -45,6 +48,8 @@ import { encodeMessage, decodeMessage, encodeJSON, decodeJSON } from './serializ
 import { randomBytes, sign as cryptoSign, generateSigningKeyPair, KeyPair } from '../crypto';
 import { toHex, shortId, deferred } from '../utils/helpers';
 import { Logger } from '../utils/logger';
+import { IncentiveLedger } from '../incentive/ledger';
+import { REPUTATION_LOW_PRIORITY } from '../types/incentive';
 
 const log = new Logger('Negotiation');
 
@@ -79,6 +84,8 @@ export interface AssignmentRecord {
   assignment: CMPAssignment;
   peerAddress: string;
   capability: ScoredCandidate;
+  /** Credits agreed for this assignment (from winning bid) */
+  creditsAgreed: number;
 }
 
 export class NegotiationEngine {
@@ -90,6 +97,7 @@ export class NegotiationEngine {
   private discovery: DiscoveryLayer;
   private signingKeyPair: KeyPair;
   private meshId: MeshId;
+  private ledger: IncentiveLedger;
   private running = false;
 
   /** Pending bid collections: taskId hex → bid array */
@@ -106,6 +114,7 @@ export class NegotiationEngine {
     peerTable: PeerTable,
     capMap: CapabilityMap,
     discovery: DiscoveryLayer,
+    ledger: IncentiveLedger,
     config?: Partial<NegotiationConfig>
   ) {
     this.meshId = meshId;
@@ -115,6 +124,7 @@ export class NegotiationEngine {
     this.peerTable = peerTable;
     this.capMap = capMap;
     this.discovery = discovery;
+    this.ledger = ledger;
     this.config = { ...DEFAULT_NEGOTIATION_CONFIG, ...config };
   }
 
@@ -449,8 +459,29 @@ export class NegotiationEngine {
     const redundancy = request.security?.verifyMode === VerifyMode.REDUNDANT ? 2 : 1;
     const needed = Math.min(scored.length, chunkCount * redundancy);
 
-    // Filter out zero-score bids
-    const valid = scored.filter((s) => s.score > 0);
+    // Filter out zero-score bids and low-reputation bidders
+    const valid = scored.filter((s) => {
+      if (s.score <= 0) return false;
+
+      // Check requester's own ledger for this bidder's reputation
+      const bidderHex = toHex(s.bid.bidderId);
+      if (this.ledger.hasAccount(bidderHex)) {
+        const rep = this.ledger.getReputation(bidderHex);
+        if (!this.ledger.canParticipate(bidderHex)) {
+          log.info(`Excluding bidder ${shortId(s.bid.bidderId)}: reputation ${rep} below minimum`);
+          return false;
+        }
+        // Deprioritize low-reputation bidders (reduce score by 50%)
+        if (rep < REPUTATION_LOW_PRIORITY) {
+          s.score *= 0.5;
+          log.debug(`Deprioritized bidder ${shortId(s.bid.bidderId)}: reputation ${rep} below ${REPUTATION_LOW_PRIORITY}`);
+        }
+      }
+      return true;
+    });
+
+    // Re-sort after any score adjustments
+    valid.sort((a, b) => b.score - a.score);
 
     // Select top N
     const winners = valid.slice(0, Math.max(1, needed));
@@ -515,15 +546,18 @@ export class NegotiationEngine {
         await this.transport.sendTo(peerAddress, msg);
 
         // Build capability placeholder if not in map
-        const defaultCap: any = cap || {
-          cpu: { architecture: 'unknown', coresAvailable: 2, clockSpeedMhz: 2000, loadPercent: 50 },
-          memory: { availableMb: 1024, bandwidthMbps: 1000 },
-          gpu: { type: 0, computeUnits: 0, memoryMb: 0, features: [] },
-          storage: { scratchSpaceMb: 512, readSpeedMbps: 100, writeSpeedMbps: 100 },
-          power: { source: 1, batteryPct: 100, thermalState: 0 },
-          runtimes: [0],
+        const defaultCap = (cap || {
+          meshId: bidderId,
+          cpu: { architecture: Architecture.X86_64, coresAvailable: 2, clockMhz: 2000, loadPercent: 50 },
+          memory: { availableMb: 1024, bandwidthGbps: 1 },
+          gpu: { type: GPUType.NONE, computeUnits: 0, vramMb: 0, supports: new Set<GPUFeature>() },
+          storage: { scratchMb: 512, readMbps: 100, writeMbps: 100 },
+          network: { meshBandwidthMbps: 100, latencyMs: 10 },
+          power: { source: PowerSource.PLUGGED, batteryPct: 100, thermalState: ThermalState.NOMINAL },
+          runtimes: [Runtime.WASM],
           reputationScore: 5000,
-        };
+          availabilitySec: 3600,
+        }) as CMPCapability;
 
         const candidate: ScoredCandidate = {
           meshId: bidderId,
@@ -532,9 +566,9 @@ export class NegotiationEngine {
           score: winner.score,
         };
 
-        records.push({ assignment, peerAddress, capability: candidate });
+        records.push({ assignment, peerAddress, capability: candidate, creditsAgreed: winner.bid.creditsRequested });
 
-        log.info(`Assigned to ${shortId(bidderId)} (score: ${winner.score.toFixed(3)})`);
+        log.info(`Assigned to ${shortId(bidderId)} (score: ${winner.score.toFixed(3)}, credits: ${winner.bid.creditsRequested} CCU)`);
       } catch (err: any) {
         log.warn(`Failed to send assignment to ${shortId(bidderId)}: ${err.message}`);
       }

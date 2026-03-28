@@ -38,6 +38,8 @@ export interface BeaconFlags {
   hasPendingTasks: boolean;
   /** Bit 2: Device can relay beacons to extend mesh range */
   relayCapable: boolean;
+  /** Bit 3: Device supports Mesh Cognition Layer (v1.2) */
+  mclCapable: boolean;
 }
 
 /**
@@ -87,4 +89,39 @@ export enum MessageType {
   CODE_REQUEST = 0x50,
   CODE_RESPONSE = 0x51,
   CREDIT_RECEIPT = 0x60,
+
+  // Layer 8: Mesh Cognition (v1.2)
+  MER_OFFER = 0x70,
+  MER_REQUEST = 0x71,
+  MER_TRANSFER = 0x72,
+  MER_STORE = 0x73,
+  MER_QUERY = 0x74,
+
+  // Layer 9: Precognition (v1.3)
+  SPECULATIVE_OFFER = 0x80,
+  SPECULATIVE_ACK = 0x81,
+  SPECULATIVE_RESULT = 0x82,
+  SPECULATIVE_ABORT = 0x83,
+  PHANTOM_HIT = 0x84,
+
+  // Immune System (v1.3)
+  ANTIBODY_OFFER = 0x90,
+  ANTIBODY_REQUEST = 0x91,
+  ANTIBODY_TRANSFER = 0x92,
+  QUARANTINE_NOTIFY = 0x93,
+
+  // Temporal Compute Futures (v1.3)
+  FUTURE_LIST = 0xA0,
+  FUTURE_BUY = 0xA1,
+  FUTURE_CONFIRM = 0xA2,
+  FUTURE_CANCEL = 0xA3,
+  FUTURE_SETTLE = 0xA4,
+  FUTURE_QUERY = 0xA5,
+
+  // Morphogenesis (v1.3)
+  MORPHOGEN_SIGNAL = 0xB0,
+  ORGAN_ANNOUNCE = 0xB1,
+  ORGAN_JOIN = 0xB2,
+  ORGAN_ACK = 0xB3,
+  ORGAN_ROUTE = 0xB4,
 }

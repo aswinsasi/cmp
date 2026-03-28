@@ -1,0 +1,47 @@
+{
+  "version": "1.0",
+  "certId": "cmp-cert-1774526625879-d151e3967522",
+  "codeHash": "a344a927570a40c0ed0dae2a59eb0db0c224f155a67494976878e23aed1b1f21",
+  "entryPoint": "encrypt",
+  "inputHash": "e0dca6480bf9c9e772eefa5b98819f7501141292f4ffe1d8a43a4bd9caaa0bfd",
+  "outputHash": "a64b0cf182d3f2616b044bd2ca76042f87cd007e1c35cd4244a7564330e1354f",
+  "outputData": "312721302736622f273131232527",
+  "strategy": "REDUNDANT",
+  "verificationMode": "REDUNDANT",
+  "totalChunks": 2,
+  "totalTimeMs": 10,
+  "deviceCount": 2,
+  "attestations": [
+    {
+      "meshId": "4a5eea1f16d825ac9f9d5ec3c4e2a640",
+      "publicKey": "a7deb4be26ed22962f2b3be540d5240412793792ee1d8dc1a6ba87858658ac16",
+      "architecture": "x86_64",
+      "cores": 10,
+      "memoryMb": 1615,
+      "executionTimeMs": 0,
+      "memoryPeakMb": 0,
+      "outputHash": "a64b0cf182d3f2616b044bd2ca76042f87cd007e1c35cd4244a7564330e1354f",
+      "completedAt": 1774526625883,
+      "signature": "a2d977a28f93b80ba4144cae0036074d829a71b62f8eba2a662ba8d34c5b5813dc1bf90deb73a86e172d1452aaf11b67d5497382fdc8a06b085745f9c1c2e20c"
+    },
+    {
+      "meshId": "1f5b693d6ba651a982853741b9d4499b",
+      "publicKey": "a7deb4be26ed22962f2b3be540d5240412793792ee1d8dc1a6ba87858658ac16",
+      "architecture": "x86_64",
+      "cores": 10,
+      "memoryMb": 1602,
+      "executionTimeMs": 0,
+      "memoryPeakMb": 0,
+      "outputHash": "a64b0cf182d3f2616b044bd2ca76042f87cd007e1c35cd4244a7564330e1354f",
+      "completedAt": 1774526625887,
+      "signature": "a2d977a28f93b80ba4144cae0036074d829a71b62f8eba2a662ba8d34c5b5813dc1bf90deb73a86e172d1452aaf11b67d5497382fdc8a06b085745f9c1c2e20c"
+    }
+  ],
+  "consensus": 1,
+  "uniqueArchitectures": 1,
+  "signaturesValid": true,
+  "issuedAt": 1774526625900,
+  "requesterId": "aba85a7d3f26d612fac66f9f457fa4d6",
+  "protocolVersion": "1.0",
+  "requesterSignature": "89195b5995a46fc4066b188d3e09df3e53ac4388e6c07cbb6dafa7fbe544c16283d073ee1bce286f2be5aa17e4cf677edf70204c55aa9632e27a421aec2e460b"
+}

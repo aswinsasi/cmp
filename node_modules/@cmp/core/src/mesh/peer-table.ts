@@ -60,8 +60,9 @@ export class PeerTable {
       lastSeen: Date.now(),
       ...existing,
       ...update,
-      lastSeen: Date.now(),
     };
+    // Always update lastSeen to now
+    entry.lastSeen = Date.now();
 
     // Classify tier if capability is available
     if (entry.capability) {

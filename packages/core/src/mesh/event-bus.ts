@@ -31,6 +31,7 @@ export interface CMPEvents {
   'chunk:received': { chunkId: Uint8Array; taskId: Uint8Array };
   'chunk:executing': { chunkId: Uint8Array };
   'chunk:complete': { chunkId: Uint8Array; status: number; timeMs: number };
+  'chunk:executed': { chunkId: Uint8Array; taskId: Uint8Array; status: number; executionTimeMs: number; creditsEarned?: number };
 
   // Assembly
   'result:received': { chunkId: Uint8Array; executorId: Uint8Array };
@@ -42,6 +43,14 @@ export interface CMPEvents {
   'executor:suspected': { meshId: Uint8Array; missedBeats: number };
   'executor:dead': { meshId: Uint8Array; taskId: Uint8Array };
   'chunk:reassigned': { chunkId: Uint8Array; newAssignee: Uint8Array };
+  'departure:received': { meshId: Uint8Array };
+
+  // Checkpointing
+  'checkpoint:stored': { chunkId: Uint8Array; taskId: Uint8Array; stepsCompleted: number };
+  'checkpoint:restored': { chunkId: Uint8Array; taskId: Uint8Array; stepsCompleted: number };
+
+  // Certification (Layer 7)
+  'certificate:generated': { certId: string; deviceCount: number; consensus: number };
 
   // Incentive
   'credit:earned': { amount: number; taskId: Uint8Array };

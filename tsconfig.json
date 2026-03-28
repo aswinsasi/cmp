@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "lib": ["ES2022", "DOM"],
+    "outDir": "./dist",
+    "rootDir": ".",
+    "strict": true,
+    "esModuleInterop": true,
+    "declaration": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@cmp/core": ["packages/core/src"],
+      "@cmp/runtime": ["packages/runtime/src"],
+      "@cmp/transport": ["packages/transport/src"]
+    }
+  },
+  "include": [
+    "packages/core/src/**/*.ts",
+    "packages/runtime/src/**/*.ts",
+    "packages/transport/src/**/*.ts"
+  ],
+  "exclude": [
+    "**/*.test.ts",
+    "**/tests/**",
+    "node_modules",
+    "dist",
+    "packages/cli/**",
+    "packages/demo/**",
+    "packages/transport/src/rn-lan-transport.ts",
+    "packages/transport/src/ble-transport.ts"
+  ]
+}

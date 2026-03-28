@@ -1,84 +1,140 @@
 # CMP Demo App
 
-> 5 phones. No internet. Distributed AI inference in 3 seconds.
+> Phone-to-phone distributed computation. No cloud. No internet.
 
 ## What This Is
 
-A React Native app that demonstrates the Compute Mesh Protocol on real devices. One phone submits a task, nearby phones process chunks in parallel, results are assembled and displayed — all without cloud or internet.
+A React Native app that runs the real Compute Mesh Protocol on phones. One phone submits a task, nearby phones process chunks in parallel, results are assembled and displayed — all over local Wi-Fi mesh.
+
+## Architecture
+
+```
+App.tsx                           # Main screen (encrypt/decrypt/status)
+├── hooks/
+│   ├── useMesh.ts                # Real CMPNode + RNLanTransport lifecycle
+│   └── useCompute.ts             # Real node.compute() with progress tracking
+├── components/
+│   ├── MeshTopology.tsx          # Live mesh node visualization
+│   └── ComputeProgress.tsx       # Phase + chunk progress display
+└── (uses)
+    └── packages/transport/src/
+        └── rn-lan-transport.ts   # React Native TCP/UDP transport
+```
 
 ## Setup
 
 ### Prerequisites
 
 - Node.js 20+
-- React Native CLI (`npm install -g react-native`)
-- Android Studio + SDK (for Android)
-- 2-5 Android phones (Android 10+)
-- All phones on the same Wi-Fi network (for LAN transport)
+- React Native CLI
+- Android Studio + SDK (for Android) or Xcode (for iOS)
+- 2+ Android/iOS phones on the same Wi-Fi network
 
 ### Install
 
 ```bash
 cd demo
 npm install
+
+# iOS only
+cd ios && pod install && cd ..
 ```
 
-### Run on Device
+### Required Native Permissions
+
+**Android** (`android/app/src/main/AndroidManifest.xml`):
+```xml
+<uses-permission android:name="android.permission.INTERNET" />
+<uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+<uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+```
+
+**iOS** (`ios/Info.plist`):
+```xml
+<key>NSLocalNetworkUsageDescription</key>
+<string>CMP needs local network access to form a compute mesh with nearby devices.</string>
+<key>NSBonjourServices</key>
+<array>
+  <string>_cmp._udp</string>
+  <string>_cmp._tcp</string>
+</array>
+```
+
+### Run
 
 ```bash
-# Connect phone via USB
+# Phone 1
 npx react-native run-android
 
-# Repeat for each phone
+# Phone 2 (connect second phone via USB, or use wireless ADB)
+npx react-native run-android
 ```
 
-### Demo Flow
+## Usage
 
-**Phone 1 (Requester):**
-1. Open app → Select "Requester" mode
-2. Tap "Join Mesh"
-3. Wait for peers to appear in topology view
-4. Tap "Analyze with Mesh"
-5. Watch chunks distribute and results assemble
+### Basic Flow
 
-**Phones 2-5 (Executors):**
-1. Open app → Select "Executor" mode
-2. Tap "Join Mesh"
-3. Wait for "Waiting for tasks..." state
-4. Chunks arrive and process automatically
+1. **Phone 1 & 2**: Open app → Tap "Join Mesh"
+2. Wait for peer discovery (topology view shows connected peers)
+3. **Phone 1**: Type a message → Tap "Encrypt"
+4. Watch the mesh negotiate, distribute, execute, and assemble
+5. Result shows: ciphertext, time, devices used, chunks
+6. Copy ciphertext → paste on Phone 2 → Tap "Decrypt" → original text
 
-## Architecture
+### Hotspot Mode (no router needed)
 
+1. Phone 1: Enable mobile hotspot
+2. Phone 2: Connect to Phone 1's hotspot
+3. Both: Open app → Join Mesh
+4. If peers don't appear, tap "Connect" and enter the hotspot IP (usually 192.168.43.1)
+
+### What You'll See
+
+**Requester phone:**
 ```
-App.tsx                    # Main screen
-├── hooks/
-│   ├── useMesh.ts         # CMP node lifecycle + mesh state
-│   └── useCompute.ts      # Distributed computation + progress
-└── components/
-    ├── MeshTopology.tsx    # Live mesh node visualization
-    └── ComputeProgress.tsx # Phase + chunk progress display
+⚡ Encrypt "Hello World"
+→ Negotiating... (finds peers)
+→ Distributing... (splits data)
+→ Executing... (peers run WASM)
+→ Complete!
+  0a272e2e2d62152d302e26
+  230ms • 1 device • 1 chunk
 ```
 
-## For the Video
+**Executor phone:**
+```
+💰 Earned 1 CCU  balance: 101
+```
 
-1. Place 5 phones on a table
-2. Enable airplane mode on all (proves no internet)
-3. Connect all to same Wi-Fi (for LAN transport) OR use Wi-Fi Direct
-4. Start Executor mode on phones 2-5 first
-5. Start Requester mode on phone 1
-6. Wait for all peers to appear in topology
-7. Tap "Analyze with Mesh"
-8. Record overhead shot of all 5 screens
+## How It Works
 
-## Colors & Design
+1. **Discovery**: UDP multicast beacons on port 43580 (same as CLI)
+2. **Handshake**: X25519 key exchange over TCP
+3. **Negotiation**: Task request → bid → scoring → assignment
+4. **Execution**: WASM module + encrypted data sent via TCP to executor
+5. **Assembly**: Encrypted results returned, decrypted, merged by requester
 
-Dark theme optimized for camera visibility:
-- Background: `#020617` (near black)
-- Primary: `#3B82F6` (blue)
-- Success: `#10B981` (green)
-- Active: `#F59E0B` (amber)
-- Text: `#E2E8F0` (light gray)
+The WASM module is a 104-byte XOR cipher (same one used in CLI tests). It XORs each byte with 0x42 — encrypt twice = decrypt. Simple but proves real distributed WASM execution.
+
+## Credits & Reputation
+
+- Start with 100 CCU (Compute Credit Units)
+- Spend 1 CCU per chunk submitted
+- Earn 1 CCU per chunk executed for others
+- Reputation tracks completion rate, accuracy, availability, honesty
+- Below 500 reputation = excluded from mesh
+
+## Transport Layer
+
+`RNLanTransport` (in `packages/transport/src/rn-lan-transport.ts`) is a drop-in replacement for the Node.js `LANTransport`:
+
+| Node.js (CLI) | React Native (App) |
+|---|---|
+| `dgram` (UDP) | `react-native-udp` |
+| `net` (TCP) | `react-native-tcp-socket` |
+
+Same wire format, same port, same protocol. A CLI node and an RN app node can join the same mesh.
 
 ---
 
-*Agent Viscro — CMP v1.0*
+*Agent Viscro — CMP v1.4*

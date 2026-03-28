@@ -280,6 +280,112 @@ export class WASMSandbox {
     return Math.round(this.memory.buffer.byteLength / (1024 * 1024));
   }
 
+  // ── Checkpoint Support ──
+  // WASM modules can opt-in to checkpointing by exporting `cmp_step`.
+  // Instead of processing all data in one call, the module processes
+  // one batch per step. Between steps, the host snapshots the WASM
+  // linear memory. On failure, a new executor restores the memory
+  // and continues from where the previous executor left off.
+
+  /**
+   * Check if the loaded module supports step-based checkpointing.
+   * A module supports checkpointing if it exports `cmp_step`.
+   */
+  supportsCheckpoint(): boolean {
+    if (!this.instance) return false;
+    const exports = this.instance.exports as Record<string, any>;
+    return typeof exports['cmp_step'] === 'function';
+  }
+
+  /**
+   * Execute one step of a checkpointable WASM module.
+   *
+   * Convention: cmp_step(input_ptr, input_len) → status
+   *   status = 0: done, output is ready
+   *   status > 0: more steps needed (value = bytes of progress)
+   *   status < 0: error
+   *
+   * First call: pass the full input data.
+   * Subsequent calls after restore: pass empty input (module continues from memory state).
+   *
+   * @returns { done: boolean, output: Uint8Array | null }
+   */
+  async executeStep(input: Uint8Array): Promise<{ done: boolean; output: Uint8Array | null }> {
+    if (!this.instance || !this.memory) throw new Error('No module loaded');
+    if (this.destroyed) throw new Error('Sandbox destroyed');
+
+    const exports = this.instance.exports as Record<string, any>;
+    if (typeof exports['cmp_step'] !== 'function') {
+      throw new Error('Module does not export cmp_step');
+    }
+
+    if (!this.startTime) {
+      this.startTime = Date.now();
+      this.metrics.startTime = this.startTime;
+    }
+
+    const allocFn = exports['cmp_alloc'] || exports['malloc'] || exports['alloc'];
+    let inputPtr = 1024;
+
+    if (input.length > 0) {
+      if (typeof allocFn === 'function') {
+        inputPtr = allocFn(input.length);
+      }
+      const inputView = new Uint8Array(this.memory!.buffer, inputPtr, input.length);
+      inputView.set(input);
+    }
+
+    const status = await this.executeWithTimeout(() => {
+      return exports['cmp_step'](inputPtr, input.length);
+    });
+
+    const done = status === 0;
+
+    let output: Uint8Array | null = null;
+    if (done) {
+      // Read output using cmp_result convention: cmp_result() → ptr to [len:u32][data]
+      if (typeof exports['cmp_result'] === 'function') {
+        const resultPtr = exports['cmp_result']();
+        const view = new DataView(this.memory!.buffer, resultPtr);
+        const outLen = Math.min(view.getUint32(0, true), this.config.maxOutputBytes);
+        output = new Uint8Array(outLen);
+        output.set(new Uint8Array(this.memory!.buffer, resultPtr + 4, outLen));
+      } else {
+        // Fallback: read from input location
+        output = new Uint8Array(this.memory!.buffer, inputPtr, Math.min(input.length, this.config.maxOutputBytes));
+      }
+
+      this.metrics.endTime = Date.now();
+      this.metrics.cpuTimeMs = this.metrics.endTime - this.metrics.startTime;
+      this.metrics.memoryPeakMb = this.getMemoryUsageMb();
+    }
+
+    return { done, output };
+  }
+
+  /**
+   * Snapshot the entire WASM linear memory.
+   * Returns a copy of the memory buffer.
+   */
+  snapshotMemory(): Uint8Array {
+    if (!this.memory) throw new Error('No memory to snapshot');
+    return new Uint8Array(this.memory.buffer.slice(0));
+  }
+
+  /**
+   * Restore WASM linear memory from a snapshot.
+   * Used when resuming execution from a checkpoint on a new device.
+   */
+  restoreMemory(snapshot: Uint8Array): void {
+    if (!this.memory) throw new Error('No memory to restore');
+
+    const target = new Uint8Array(this.memory.buffer);
+    if (snapshot.length > target.length) {
+      throw new Error(`Snapshot (${snapshot.length}) exceeds memory (${target.length})`);
+    }
+    target.set(snapshot);
+  }
+
   /**
    * Destroy the sandbox. Zeros all memory.
    */

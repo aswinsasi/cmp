@@ -1,25 +1,126 @@
 /**
  * CMP Data Splitter
- * Implements additive secret sharing for CONFIDENTIAL tasks.
+ * Implements Shamir's Secret Sharing for CONFIDENTIAL tasks (v1.2).
  * No single executor can reconstruct the full input.
+ *
+ * v1.0: XOR-based additive sharing (n-of-n, all shares required)
+ * v1.2: Shamir's SSS over GF(256) (k-of-n threshold, fault tolerant)
+ *
+ * The threshold k defaults to ceil(n/2)+1, providing:
+ *   - Majority of executors can reconstruct (fault tolerance)
+ *   - Minority cannot learn anything (privacy)
+ *
+ * For non-confidential tasks, splitParallel() simply divides data
+ * into equal-sized chunks (no secret sharing involved).
  *
  * @module runtime/data-splitter
  * @author Agent Viscro
  */
 
 import { randomBytes } from '../../core/src';
+import { shamirSplit, shamirReconstruct } from './shamir';
+import type { ShamirShare } from './shamir';
+
+export interface SplitResult {
+  /** The shares (for secret sharing) or chunks (for parallel split) */
+  shares: Uint8Array[];
+  /** Shamir x-coordinates (only present for secret sharing) */
+  xCoordinates?: number[];
+  /** Threshold k (only present for secret sharing) */
+  threshold?: number;
+  /** Whether this was a Shamir split or XOR split */
+  scheme: 'shamir' | 'xor' | 'parallel';
+}
 
 export class DataSplitter {
   /**
-   * Split data into N shares using XOR-based additive secret sharing.
-   * XOR of all shares = original data.
-   * Any subset of N-1 shares reveals nothing about the original.
+   * Split data into N shares using Shamir's Secret Sharing (v1.2).
+   * Any k shares can reconstruct. k-1 shares reveal nothing.
+   *
+   * Default threshold: ceil(n/2) + 1 (majority required)
    *
    * @param data - Original data
    * @param numShares - Number of shares (typically = number of executors)
+   * @param threshold - Minimum shares to reconstruct (default: ceil(n/2)+1)
    * @returns Array of N shares, each same length as data
    */
-  split(data: Uint8Array, numShares: number): Uint8Array[] {
+  split(data: Uint8Array, numShares: number, threshold?: number): Uint8Array[] {
+    if (numShares < 2) {
+      return [new Uint8Array(data)];
+    }
+
+    // Clamp to GF(256) max: 255 shares
+    const n = Math.min(numShares, 255);
+    const k = threshold ?? Math.ceil(n / 2) + 1;
+
+    const shamirShares = shamirSplit(data, n, Math.min(k, n));
+    return shamirShares.map(s => s.data);
+  }
+
+  /**
+   * Split data and return full metadata (including x-coordinates).
+   * Use this when you need to track which share belongs to which executor.
+   *
+   * @param data - Original data
+   * @param numShares - Number of shares
+   * @param threshold - Minimum shares to reconstruct
+   * @returns SplitResult with shares, x-coordinates, and threshold
+   */
+  splitWithMetadata(data: Uint8Array, numShares: number, threshold?: number): SplitResult {
+    if (numShares < 2) {
+      return { shares: [new Uint8Array(data)], scheme: 'shamir' };
+    }
+
+    const n = Math.min(numShares, 255);
+    const k = threshold ?? Math.ceil(n / 2) + 1;
+
+    const shamirShares = shamirSplit(data, n, Math.min(k, n));
+    return {
+      shares: shamirShares.map(s => s.data),
+      xCoordinates: shamirShares.map(s => s.x),
+      threshold: Math.min(k, n),
+      scheme: 'shamir',
+    };
+  }
+
+  /**
+   * Reconstruct original data from Shamir shares.
+   * Requires at least k shares (the threshold from split).
+   *
+   * @param shares - Share data arrays
+   * @param xCoordinates - x-coordinates for each share (1-based)
+   * @returns Original data
+   */
+  reconstruct(shares: Uint8Array[], xCoordinates?: number[]): Uint8Array {
+    if (shares.length === 0) return new Uint8Array(0);
+    if (shares.length === 1) return new Uint8Array(shares[0]);
+
+    // If x-coordinates provided, use Shamir reconstruction
+    if (xCoordinates && xCoordinates.length === shares.length) {
+      const shamirShares: ShamirShare[] = shares.map((data, i) => ({
+        x: xCoordinates[i],
+        data,
+      }));
+      return shamirReconstruct(shamirShares);
+    }
+
+    // Fallback: assume sequential x-coordinates (1, 2, ..., n)
+    const shamirShares: ShamirShare[] = shares.map((data, i) => ({
+      x: i + 1,
+      data,
+    }));
+    return shamirReconstruct(shamirShares);
+  }
+
+  /**
+   * Legacy XOR-based split (v1.0 compatibility).
+   * All N shares are required for reconstruction — no fault tolerance.
+   *
+   * @param data - Original data
+   * @param numShares - Number of shares
+   * @returns Array of N shares
+   */
+  splitXOR(data: Uint8Array, numShares: number): Uint8Array[] {
     if (numShares < 2) {
       return [new Uint8Array(data)];
     }
@@ -46,13 +147,10 @@ export class DataSplitter {
   }
 
   /**
-   * Reconstruct original data from all shares.
-   * All shares must be provided; missing any one makes reconstruction impossible.
-   *
-   * @param shares - All N shares from split()
-   * @returns Original data
+   * Legacy XOR reconstruction (v1.0 compatibility).
+   * All shares must be provided.
    */
-  reconstruct(shares: Uint8Array[]): Uint8Array {
+  reconstructXOR(shares: Uint8Array[]): Uint8Array {
     if (shares.length === 0) return new Uint8Array(0);
     if (shares.length === 1) return new Uint8Array(shares[0]);
 

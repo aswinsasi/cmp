@@ -11,3 +11,7 @@ export * from './task';
 export * from './negotiation';
 export * from './result';
 export * from './incentive';
+export * from './certificate';
+export * from './mcl';
+export * from './errors';
+export * from './node-state';

@@ -1,17 +1,12 @@
 {
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "commonjs",
-    "lib": ["ES2022", "DOM"],
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "strict": true,
-    "esModuleInterop": true,
-    "declaration": true,
-    "resolveJsonModule": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "outDir": "./dist"
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.test.ts", "node_modules", "dist"]
+  "include": [
+    "src/**/*.ts",
+    "../transport/src/**/*.ts",
+    "../runtime/src/**/*.ts"
+  ],
+  "exclude": ["src/**/*.test.ts", "node_modules", "dist", "../transport/src/rn-lan-transport.ts", "../transport/src/ble-transport.ts"]
 }

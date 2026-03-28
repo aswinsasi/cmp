@@ -247,4 +247,12 @@ export class ResultAssembler {
     this.results.clear();
     this.startTime = Date.now();
   }
+
+  /**
+   * Get all collected results (for certification).
+   * Returns a map of chunkId hex → array of CMPResults from all executors.
+   */
+  getAllResults(): Map<string, CMPResult[]> {
+    return new Map(this.results);
+  }
 }

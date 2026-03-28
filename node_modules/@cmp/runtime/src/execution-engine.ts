@@ -142,7 +142,7 @@ export class ExecutionEngine {
           status = ChunkStatus.RESOURCE_EXCEEDED;
         } else {
           // 8. Encrypt output for requester
-          outputPayload = encrypt(rawOutput, sessionKey);
+          outputPayload = new Uint8Array(encrypt(rawOutput, sessionKey));
         }
       }
 

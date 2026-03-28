@@ -53,6 +53,7 @@ export function encodeBeacon(beacon: CMPBeacon): Uint8Array {
   if (beacon.flags.acceptingTasks) flags |= 0x01;
   if (beacon.flags.hasPendingTasks) flags |= 0x02;
   if (beacon.flags.relayCapable) flags |= 0x04;
+  if (beacon.flags.mclCapable) flags |= 0x08;
   view.setUint8(offset++, flags);
 
   return bytes;
@@ -103,6 +104,7 @@ export function decodeBeacon(data: Uint8Array): CMPBeacon | null {
     acceptingTasks: (flagsByte & 0x01) !== 0,
     hasPendingTasks: (flagsByte & 0x02) !== 0,
     relayCapable: (flagsByte & 0x04) !== 0,
+    mclCapable: (flagsByte & 0x08) !== 0,
   };
 
   return { magic, version, meshId, capabilityHash, timestamp, ttl, flags };
@@ -127,6 +129,7 @@ export function createBeacon(
       acceptingTasks: true,
       hasPendingTasks: false,
       relayCapable: true,
+      mclCapable: true,
       ...flags,
     },
   };

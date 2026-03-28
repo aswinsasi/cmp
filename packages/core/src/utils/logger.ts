@@ -35,6 +35,8 @@ const RESET = '\x1b[0m';
 export class Logger {
   private component: string;
   private static globalLevel: LogLevel = LogLevel.INFO;
+  /** Optional output hook — if set, all log output goes through this instead of console */
+  private static outputHook: ((line: string) => void) | null = null;
 
   constructor(component: string) {
     this.component = component;
@@ -42,6 +44,14 @@ export class Logger {
 
   static setLevel(level: LogLevel): void {
     Logger.globalLevel = level;
+  }
+
+  /**
+   * Set a custom output handler (used by CLI to respect readline prompt).
+   * Pass null to reset to default console output.
+   */
+  static setOutputHook(hook: ((line: string) => void) | null): void {
+    Logger.outputHook = hook;
   }
 
   debug(msg: string, data?: any): void {
@@ -72,7 +82,9 @@ export class Logger {
       line += ` ${typeof data === 'object' ? JSON.stringify(data) : data}`;
     }
 
-    if (level >= LogLevel.ERROR) {
+    if (Logger.outputHook) {
+      Logger.outputHook(line);
+    } else if (level >= LogLevel.ERROR) {
       console.error(line);
     } else if (level >= LogLevel.WARN) {
       console.warn(line);

@@ -45,6 +45,18 @@ export interface CMPConfig {
 
   // ── Storage ──
   dbPath: string;
+
+  // ── Mesh Cognition Layer (v1.2) ──
+  mcl: {
+    enabled: boolean;
+    maxMers: number;
+    maxPerOrigin: number;
+    maxPerJoin: number;
+    minHintConfidence: number;
+    merTtlDays: number;
+    /** Path to SQLite database for MER persistence (empty = in-memory only) */
+    merDbPath: string;
+  };
 }
 
 export const DEFAULT_CONFIG: CMPConfig = {
@@ -89,6 +101,17 @@ export const DEFAULT_CONFIG: CMPConfig = {
 
   // Storage
   dbPath: './cmp-data/ledger.db',
+
+  // Mesh Cognition Layer (v1.2)
+  mcl: {
+    enabled: true,
+    maxMers: 1000,
+    maxPerOrigin: 50,
+    maxPerJoin: 50,
+    minHintConfidence: 70,
+    merTtlDays: 90,
+    merDbPath: './cmp-data/mers.db',
+  },
 };
 
 /**
