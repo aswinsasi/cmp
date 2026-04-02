@@ -1,0 +1,48 @@
+name: CMP Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Core Protocol Tests
+        run: npx tsx packages/core/tests/phase1.test.ts
+
+      - name: Authentication Tests
+        run: npx tsx packages/core/tests/v1.5-phase-a.test.ts
+
+      - name: Layer 11 - Consciousness Tests
+        run: npx tsx packages/core/tests/v2.0-layer11.test.ts
+
+      - name: Layer 12 - Spacetime Tests
+        run: npx tsx packages/core/tests/v2.0-layer12.test.ts
+
+      - name: Layer 13 - Wormhole Tests
+        run: npx tsx packages/core/tests/v2.0-layer13.test.ts
+
+      - name: V2 Bridge Integration Tests
+        run: npx tsx packages/core/tests/v2.0-bridge.test.ts
+
+      - name: Two-Node Distributed Compute
+        run: npx tsx packages/core/tests/v1.5-phase-d.test.ts

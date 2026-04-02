@@ -298,7 +298,7 @@ test('Secret sharing: missing share breaks reconstruction', () => {
   const data = new TextEncoder().encode('important secret');
 
   const shares = splitter.split(data, 4);
-  const incomplete = shares.slice(0, 3); // Missing one share
+  const incomplete = shares.slice(0, 2); // Only 2 shares, threshold is 3
 
   const reconstructed = splitter.reconstruct(incomplete);
   assert(!bytesEqual(reconstructed, data), 'incomplete reconstruction fails');

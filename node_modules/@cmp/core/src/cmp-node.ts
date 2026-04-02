@@ -19,6 +19,8 @@ import { LANTransport } from '../../transport/src/lan-transport';
 import { MultiTransport } from '../../transport/src/multi-transport';
 import { VirtualTransport, VirtualNetwork } from '../../transport/src/virtual-transport';
 
+import { V2Bridge } from './v2-bridge';
+
 import {
   MeshId, TaskId, SessionKey, Hash256,
   TaskType, Runtime, Priority, VerifyMode, SecurityLevel, EncryptionAlgo,
@@ -176,6 +178,12 @@ export class CMPNode {
   /** Mesh Cognition Layer engine (v1.2) */
   private mclEngine: MCLEngine;
 
+  /** Optional Lifeform transport handler (v1.4) */
+  private lifeformHandler: any | null = null;
+
+  /** V2 Bridge: Layers 11-13 (v2.0) */
+  private v2bridge: V2Bridge | null = null;
+
   /**
    * Pending remote results: taskHex → { resolve, assembler, timeout, resultCount }
    * Used to collect CHUNK_RESULT messages from executors.
@@ -313,6 +321,9 @@ export class CMPNode {
       bus: this.bus,
       config: this.config.mcl,
     });
+
+    // Layers 11-13: Consciousness, Spacetime, Wormholes (v2.0)
+    this.v2bridge = new V2Bridge(this);
   }
 
   // ══════════════════════════════════════════
@@ -359,6 +370,9 @@ export class CMPNode {
       await this.mclEngine.initPersistence(this.config.mcl.merDbPath);
     }
     this.mclEngine.start();
+
+    // Start v2.0 layers
+    if (this.v2bridge) this.v2bridge.start();
 
     // Initialize own ledger account and apply decay to any existing accounts
     this.ledger.getAccount(this.meshIdHex());
@@ -409,6 +423,9 @@ export class CMPNode {
 
     await this.bidHandler.stop();
     await this.negotiation.stop();
+
+    // Stop v2.0 layers
+    if (this.v2bridge) this.v2bridge.stop();
     await this.capExchange.stop();
     await this.discovery.stop();
     await this.transport.stop();
@@ -952,6 +969,35 @@ export class CMPNode {
   }
 
   /**
+   * Set the Lifeform transport handler (v1.4).
+   * Routes messages 0xC0-0xE0 to this handler.
+   */
+  setLifeformHandler(handler: any): void {
+    this.lifeformHandler = handler;
+  }
+
+  /**
+   * Get the transport for direct access (used by LifeformTransportHandler).
+   */
+  getTransport(): ITransport {
+    return this.transport;
+  }
+
+  /**
+   * Get the V2 Bridge (Layers 11-13: Consciousness, Spacetime, Wormholes).
+   */
+  getV2Bridge(): V2Bridge | null {
+    return this.v2bridge;
+  }
+
+  /**
+   * Get the peer table for peer resolution.
+   */
+  getPeerTable(): PeerTable {
+    return this.peerTable;
+  }
+
+  /**
    * Get the incentive ledger for credit/reputation tracking.
    */
   getLedger(): IncentiveLedger {
@@ -1180,6 +1226,16 @@ export class CMPNode {
         this.handleCheckpointStore(msg.payload);
         break;
       default:
+        // Lifeform message routing (v1.4) — types 0xC0-0xE0
+        if (msg.type >= 0xC0 && msg.type <= 0xE0 && this.lifeformHandler) {
+          this.lifeformHandler.handleIncoming(msg.type, msg.payload, event.peerAddress);
+          break;
+        }
+        // v2.0 message routing (Layers 11-13) — types 0xE1-0xF1
+        if (msg.type >= 0xE1 && msg.type <= 0xF1 && this.v2bridge) {
+          this.v2bridge.handleMessage(msg.type, msg.payload);
+          break;
+        }
         // MCL message routing (v1.2)
         this.mclEngine.handleMessage(msg.type, msg.payload, event.peerAddress);
         break;

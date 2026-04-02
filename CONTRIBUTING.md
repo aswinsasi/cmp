@@ -1,66 +1,94 @@
 # Contributing to CMP
 
-Thank you for your interest in the Compute Mesh Protocol. CMP is an open protocol — contributions from everyone are welcome.
+Thanks for your interest in CMP. Here's how to get started.
 
-## Ways to Contribute
-
-- **Bug reports** — Found something broken? Open an issue.
-- **Code contributions** — Fix bugs, add features, improve tests.
-- **Protocol feedback** — Review the [spec](./spec/CMP-v1.0.md) and suggest improvements.
-- **Documentation** — Improve docs, add examples, fix typos.
-- **Transport implementations** — Build CMP for new transports (Bluetooth Classic, NFC, ultrasonic).
-- **Platform ports** — Port the SDK to Rust, Go, Swift, Kotlin.
-- **CEPs** — Propose protocol changes via CMP Enhancement Proposals.
-
-## Development Setup
+## Setup
 
 ```bash
 git clone https://github.com/agentviscro/cmp.git
 cd cmp
-
-# Install all packages
-cd packages/core && npm install
-cd ../runtime && npm install
-cd ../cli && npm install
-cd ../core
-
-# Run tests
-npx tsx tests/phase1.test.ts
-npx tsx tests/phase2.test.ts
-npx tsx tests/phase3.test.ts
-npx tsx tests/phase4.test.ts
-npx tsx tests/phase5.test.ts
+npm install
 ```
+
+## Running Tests
+
+```bash
+# All tests
+npm run test:all
+
+# Specific suites
+npm run test              # Core protocol
+npm run test:auth         # Authentication
+npm run test:consciousness # Layer 11
+npm run test:spacetime    # Layer 12
+npm run test:wormhole     # Layer 13
+npm run test:bridge       # Integration
+npm run test:distributed  # Two-node WASM
+```
+
+All tests must pass before submitting a PR.
+
+## Project Structure
+
+```
+packages/core/src/        Protocol implementation
+packages/core/tests/      Test suites
+packages/transport/src/   Transport implementations
+packages/runtime/src/     WASM sandbox and execution
+packages/cli/src/         CLI interface
+packages/mobile/          React Native entry point
+examples/                 Runnable examples
+docs/                     Protocol specifications
+```
+
+## Adding a New Feature
+
+1. Create a feature branch: `git checkout -b feature/your-feature`
+2. Write tests first
+3. Implement the feature
+4. Run `npm run test:all` — all tests must pass
+5. Submit a PR with a clear description
 
 ## Code Style
 
-- TypeScript with strict mode
-- Every public function has a JSDoc comment
-- Every new feature has tests
-- No external dependencies without discussion
+- TypeScript strict mode
+- JSDoc comments on every exported function
+- No `any` types in public APIs (internal `any` is acceptable for dynamic imports)
+- Test files use `node:test` runner with `describe`/`it` pattern
+- Tests end with `after(() => setTimeout(() => process.exit(0), 200))` to prevent hanging
 
-## Pull Request Process
+## Areas Where Help is Needed
 
-1. Fork the repository
-2. Create a branch: `git checkout -b feature/my-feature`
-3. Write code + tests
-4. Run all tests: ensure 150+ tests pass
-5. Submit PR with a clear description of what and why
+- **React Native testing** — Run the protocol on real phones via BLE
+- **WebGPU integration** — GPU compute from WASM sandboxes
+- **ZK-SNARK verification** — Zero-knowledge proofs for computation correctness
+- **Production hardening** — Rate limiting, monitoring, graceful version upgrades
+- **Real applications** — Build something on CMP and share your experience
+- **Documentation** — API reference docs, tutorials, blog posts
+- **Benchmarks** — Performance testing across different hardware and network conditions
 
-## CMP Enhancement Proposals (CEP)
+## Wire Protocol
 
-Protocol changes go through the CEP process:
+Adding a new message type? Use the next available code in the appropriate range:
 
-1. Open an issue titled `CEP: [Your Proposal Title]`
-2. Describe the problem, proposed solution, and trade-offs
-3. Community discussion (minimum 1 week)
-4. If consensus reached, implement and submit PR
-5. Spec is updated with the accepted change
-
-## Code of Conduct
-
-Be respectful. Be constructive. Build things that matter.
+| Range | Layer | Current Max |
+|-------|-------|-------------|
+| 0x01-0x0F | Discovery/Handshake | 0x04 |
+| 0x10-0x1F | Negotiation | 0x13 |
+| 0x20-0x2F | Distribution/Assembly | 0x21 |
+| 0x30-0x3F | Heartbeat/Departure | 0x31 |
+| 0x40-0x5F | Checkpoint/Code | 0x51 |
+| 0x60-0x6F | Incentive | 0x60 |
+| 0x70-0x7F | MCL | 0x74 |
+| 0x80-0x8F | Precognition | 0x84 |
+| 0x90-0x9F | Immune | 0x93 |
+| 0xA0-0xAF | Futures | 0xA5 |
+| 0xB0-0xBF | Morphogenesis | 0xB4 |
+| 0xC0-0xDF | Lifeforms | 0xDF |
+| 0xE1-0xE5 | Consciousness | 0xE5 |
+| 0xE6-0xEB | Spacetime | 0xEB |
+| 0xEC-0xF1 | Wormholes | 0xF1 |
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under MIT.
+By contributing, you agree that your contributions will be licensed under the MIT License.

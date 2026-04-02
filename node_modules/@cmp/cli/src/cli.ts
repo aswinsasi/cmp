@@ -17,6 +17,8 @@ import { CMPNode } from '../../core/src/cmp-node';
 import { LogLevel, Logger, toHex, shortId, TaskType } from '../../core/src';
 import type { CMP_MER } from '../../core/src/types/mcl';
 import { DecompositionStrategy } from '../../core/src/types/mcl';
+import { V2Bridge } from '../../core/src/v2-bridge';
+import { doConsciousness, doSpacetime, doWormhole, doV2Status, v2HelpText } from './v2-cli-commands';
 
 const VERSION = '1.2.0';
 const C = {
@@ -142,6 +144,12 @@ async function cmdStart(): Promise<void> {
 
   await node.start();
 
+  // ── Layers 11-13: Consciousness, Spacetime, Wormholes (v2.0) ──
+  const v2bridge = node.getV2Bridge();
+  if (v2bridge) {
+    log('◈', C.cyan, 'v2.0 Consciousness active', 'Layers 11-13 (pheromones, spacetime, wormholes)');
+  }
+
   // ── Layer 9: Precognition (v1.3) ──
   let dreamScheduler: any = null;
   let phantomCache: any = null;
@@ -255,6 +263,70 @@ async function cmdStart(): Promise<void> {
     // Morphogenesis is optional
   }
 
+  // ── Lifeforms (v1.4) ──
+  let lfManager: any = null;
+  let fusionEngine: any = null;
+  let intentRegistry: any = null;
+  let intentVerifier: any = null;
+  let violationHandler: any = null;
+  let evolutionMutator: any = null;
+  let generationTracker: any = null;
+  try {
+    const { LifeformManager } = await import('../../core/src/lifeform/manager');
+    const { FusionEngine } = await import('../../core/src/lifeform/fusion');
+    const { IntentRegistry, IntentVerifier, ViolationHandler } = await import('../../core/src/lifeform/intent');
+    const { GenomeMutator, GenerationTracker } = await import('../../core/src/lifeform/evolution');
+
+    lfManager = new LifeformManager({ deviceId: node.shortMeshId(), maxHostedLifeforms: 20 });
+    fusionEngine = new FusionEngine();
+    intentRegistry = new IntentRegistry();
+    intentVerifier = new IntentVerifier();
+    violationHandler = new ViolationHandler();
+    evolutionMutator = new GenomeMutator();
+    generationTracker = new GenerationTracker();
+    lfManager.start();
+
+    // Wire transport handler for multi-device Lifeforms
+    try {
+      const { LifeformTransportHandler } = await import('../../core/src/lifeform/transport-handler');
+      const { encodeMessage } = await import('../../core/src/layers/serializer');
+
+      const peerTable = node.getPeerTable();
+      const transport = node.getTransport();
+
+      const peerResolver = {
+        getAddressForMeshId: (meshIdHex: string) => {
+          const peers = peerTable.getActive();
+          const peer = peers.find((p: any) => p.hexId === meshIdHex);
+          return peer ? peer.transports[0] : null;
+        },
+        getActivePeerIds: () => peerTable.getActive().map((p: any) => p.hexId),
+        getLocalMeshId: () => node.meshIdHex(),
+      };
+
+      const frameTransport = {
+        sendTo: async (addr: string, data: Uint8Array) => transport.sendTo(addr, data),
+        encodeFrame: (type: number, payload: Uint8Array) => encodeMessage(type, payload),
+      };
+
+      const lfTransport = new LifeformTransportHandler(peerResolver, frameTransport);
+      lfTransport.setManager(lfManager);
+      node.setLifeformHandler(lfTransport);
+
+      // Wire remote cause delivery callback
+      lfManager.onSendCause(async (targetHost: string, cause: any) => {
+        await lfTransport.sendCause(targetHost, cause);
+      });
+
+    } catch (err: any) {
+      // Transport wiring is optional
+    }
+
+    log('◈', C.magenta, 'Lifeforms active', 'v1.4 computational entities');
+  } catch (err: any) {
+    // Lifeforms is optional
+  }
+
   log('\u25cf', C.green, `Node started: ${C.b}${node.shortMeshId()}${C.r}`, node.meshIdHex());
   log('\u25c9', C.blue, `Listening on ${transportLabel}`, `resource share: ${share}%`);
   log('\u25cc', C.d, `Scanning for peers...`);
@@ -286,7 +358,8 @@ async function cmdStart(): Promise<void> {
     ${C.magenta}immune${C.r} [status|antibodies|quarantine|threats]  Immune System` : ''}${metabolismManager ? `
     ${C.magenta}metabolism${C.r} [status|mesh|forecast]  Computation Metabolism` : ''}${futureMarket ? `
     ${C.magenta}futures${C.r} [status|list|sell|my]    Temporal Compute Futures` : ''}${organManager ? `
-    ${C.magenta}organs${C.r} [status|list|affinity|routing]  Mesh Morphogenesis` : ''}
+    ${C.magenta}organs${C.r} [status|list|affinity|routing]  Mesh Morphogenesis` : ''}${lfManager ? `
+    ${C.magenta}lf${C.r} [status|spawn|list|cause|kill|...]  Lifeforms (v1.4)` : ''}
     ${C.cyan}help${C.r}                         Show all commands
     ${C.cyan}quit${C.r}                         Shutdown
 `);
@@ -482,6 +555,37 @@ async function cmdStart(): Promise<void> {
         }
         break;
 
+      case 'lf':
+      case 'lifeform':
+        {
+          if (!lfManager) {
+            console.log(`  ${C.d}Lifeforms not available.${C.r}`);
+            break;
+          }
+          const lfCmd = (arg.split(/\s+/)[0] || 'status').toLowerCase();
+          const lfArg = arg.substring(lfCmd.length).trim();
+          await doLifeform(lfManager, fusionEngine, intentRegistry, intentVerifier, violationHandler, evolutionMutator, generationTracker, lfCmd, lfArg);
+        }
+        break;
+
+      case 'consciousness':
+      case 'c11':
+        if (!v2bridge) { console.log(`  ${C.d}v2.0 not available.${C.r}`); break; }
+        doConsciousness(v2bridge, arg);
+        break;
+
+      case 'spacetime':
+      case 'c12':
+        if (!v2bridge) { console.log(`  ${C.d}v2.0 not available.${C.r}`); break; }
+        doSpacetime(v2bridge, arg);
+        break;
+
+      case 'wormhole':
+      case 'c13':
+        if (!v2bridge) { console.log(`  ${C.d}v2.0 not available.${C.r}`); break; }
+        doWormhole(v2bridge, arg);
+        break;
+
       case 'help':
       case 'h':
         console.log(`
@@ -540,6 +644,21 @@ async function cmdStart(): Promise<void> {
     ${C.magenta}organs routing${C.r}                Organ routing statistics
     ${C.magenta}organs events${C.r}                 Recent organ events
 
+  ${C.b}Lifeforms (v1.4):${C.r}
+    ${C.magenta}lf${C.r}                            Lifeform manager status
+    ${C.magenta}lf spawn${C.r} <name> [ccu]         Spawn a Lifeform (default: 100 CCU)
+    ${C.magenta}lf list${C.r}                       List all hosted Lifeforms
+    ${C.magenta}lf cause${C.r} <name> [payload]     Send a cause to a Lifeform
+    ${C.magenta}lf state${C.r} <name>               Show Lifeform CRDT state
+    ${C.magenta}lf kill${C.r} <name>                Kill a Lifeform
+    ${C.magenta}lf synapse${C.r} <from> <to>        Create a synapse
+    ${C.magenta}lf fuse${C.r} <nameA> <nameB> [composite]  Fuse two Lifeforms
+    ${C.magenta}lf fission${C.r} <compositeId>      Split a composite Lifeform
+    ${C.magenta}lf intent${C.r} <name> <key> <op> <val>  Declare an intent
+    ${C.magenta}lf intents${C.r} <name>             List intents for a Lifeform
+    ${C.magenta}lf simulate${C.r}                   Run a full demo simulation
+${v2HelpText()}
+
     ${C.cyan}quit${C.r}                         Shutdown
 `);
         break;
@@ -548,6 +667,7 @@ async function cmdStart(): Promise<void> {
       case 'q':
       case 'exit':
         console.log(`\n  ${C.yellow}Shutting down...${C.r}`);
+        if (lfManager) lfManager.stop();
         await node.stop();
         console.log(`  ${C.green}Node stopped.${C.r}\n`);
         process.exit(0);
@@ -812,6 +932,9 @@ function doStatus(node: CMPNode): void {
   if (mcl.pollinationStats.joinEvents > 0) {
     console.log(`  ${C.d}Pollination  ${C.r}${C.b}${mcl.pollinationStats.totalReceived}${C.r} received, ${C.b}${mcl.pollinationStats.totalOffered}${C.r} offered`);
   }
+  // v2.0 Status (Layers 11-13)
+  const v2b = node.getV2Bridge();
+  if (v2b) doV2Status(v2b);
   console.log(`  ${C.d}\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500${C.r}`);
   console.log();
 }
@@ -1842,6 +1965,409 @@ function doOrgans(manager: any, router: any, tracker: any, cmd: string): void {
 
     default:
       console.log(`  ${C.d}Usage: organs [status|list|affinity|routing|events|simulate]${C.r}`);
+  }
+}
+
+// ══════════════════════════════════════════════
+// LIFEFORMS: v1.4 REPL subcommands
+// ══════════════════════════════════════════════
+
+async function doLifeform(
+  mgr: any, fusionEngine: any, intentRegistry: any, intentVerifier: any,
+  violationHandler: any, mutator: any, genTracker: any,
+  cmd: string, arg: string,
+): Promise<void> {
+  const toHex = (b: Uint8Array) => Array.from(b.slice(0, 8)).map(x => x.toString(16).padStart(2, '0')).join('');
+
+  switch (cmd) {
+    case 'status': {
+      const stats = mgr.getStats();
+      console.log();
+      console.log(`  ${C.b}Lifeforms (v1.4)${C.r}`);
+      console.log(`  ${C.d}────────────────────────────────────────${C.r}`);
+      console.log(`  ${C.d}Hosted         ${C.r}${C.b}${stats.hosted}${C.r} / ${stats.capacity}`);
+      console.log(`  ${C.d}Causes total   ${C.r}${C.b}${stats.totalCausesProcessed}${C.r}`);
+      console.log(`  ${C.d}CCU balance    ${C.r}${C.green}${stats.totalCcuBalance.toFixed(2)}${C.r}`);
+      console.log(`  ${C.d}DNS entries    ${C.r}${stats.dnsEntries}`);
+      console.log(`  ${C.d}Synapses       ${C.r}${stats.synapses}`);
+      if (fusionEngine) {
+        const fs = fusionEngine.getStats();
+        console.log(`  ${C.d}Fusions        ${C.r}active: ${C.b}${fs.activeFusions}${C.r}  total: ${fs.totalFusions}  fissions: ${fs.totalFissions}`);
+      }
+      if (intentRegistry) {
+        console.log(`  ${C.d}Intents        ${C.r}${intentRegistry.size}`);
+      }
+      console.log(`  ${C.d}────────────────────────────────────────${C.r}`);
+      console.log();
+      break;
+    }
+
+    case 'spawn': {
+      const parts = arg.split(/\s+/);
+      const name = parts[0];
+      if (!name) {
+        console.log(`  ${C.d}Usage: lf spawn <name> [initialCcu]${C.r}`);
+        break;
+      }
+      const ccu = parseFloat(parts[1]) || 100;
+
+      const { LifeformConfig } = await import('../../core/src/types/lifeform');
+      const config = {
+        name,
+        wasmModule: new Uint8Array([0, 0x61, 0x73, 0x6d]),
+        initialState: { spawned_at: Date.now(), status: 'active' },
+        initialCcu: ccu,
+        minReplicas: 1,
+        maxReplicas: 3,
+        autoMigrate: true,
+        mutationLibraryHash: null,
+        maxCausesPerSecond: 100,
+        maxStateSizeBytes: 1024 * 1024,
+      };
+
+      const hosted = mgr.spawn(config);
+      if (!hosted) {
+        console.log(`  ${C.red}✗${C.r} Failed to spawn "${name}" — name taken or at capacity`);
+        break;
+      }
+
+      // Set a default echo handler
+      mgr.setHandler(name, async (cause: any) => {
+        const state = hosted.state;
+        const count = (state.get('causes_received') ?? 0);
+        state.set('causes_received', count + 1);
+        state.set('last_payload', new TextDecoder().decode(cause.payload));
+        return { stateMutations: 2, outgoingCauses: [] };
+      });
+
+      console.log(`  ${C.green}✓${C.r} Spawned ${C.b}${name}${C.r}  CCU: ${ccu}  ID: ${toHex(hosted.lifecycle.id)}`);
+      console.log(`    ${C.d}Default echo handler installed. Send causes with: lf cause ${name} <message>${C.r}`);
+      break;
+    }
+
+    case 'list': {
+      const names = mgr.getNames();
+      console.log();
+      if (names.length === 0) {
+        console.log(`  ${C.d}No Lifeforms hosted. Use: lf spawn <name>${C.r}`);
+      } else {
+        console.log(`  ${C.b}Hosted Lifeforms (${names.length})${C.r}`);
+        console.log(`  ${C.d}────────────────────────────────────────${C.r}`);
+        for (const name of names) {
+          const hosted = mgr.getByName(name);
+          if (!hosted) continue;
+          const lc = hosted.lifecycle;
+          const stateColor = lc.state === 'alive' ? C.green : lc.state === 'fused' ? C.cyan : C.red;
+          console.log(`  ${stateColor}●${C.r} ${C.b}${name}${C.r}  state: ${lc.state}  CCU: ${lc.ccuBalance.toFixed(2)}  causes: ${lc.causesProcessed}`);
+        }
+        console.log(`  ${C.d}────────────────────────────────────────${C.r}`);
+      }
+      console.log();
+      break;
+    }
+
+    case 'cause':
+    case 'send': {
+      const parts = arg.split(/\s+/);
+      const targetName = parts[0];
+      const payload = parts.slice(1).join(' ') || 'ping';
+      if (!targetName) {
+        console.log(`  ${C.d}Usage: lf cause <name> [payload]${C.r}`);
+        break;
+      }
+
+      const { CauseType } = await import('../../core/src/types/causal');
+      const rng = (n: number) => { const b = new Uint8Array(n); for (let i=0;i<n;i++) b[i]=Math.floor(Math.random()*256); return b; };
+      const cause = {
+        id: rng(16), type: CauseType.MESSAGE, chainId: rng(16),
+        chainDepth: 0, maxChainDepth: 64, deadlineMs: 0,
+        sourceId: rng(16), sourceType: 'device' as const,
+        targetId: rng(16),
+        payload: new TextEncoder().encode(payload),
+        ccuAttached: 0, expectsResponse: false,
+        correlationId: null, emittedAt: Date.now(),
+      };
+
+      const ok = await mgr.deliverCause(targetName, cause);
+      if (ok) {
+        const hosted = mgr.getByName(targetName);
+        console.log(`  ${C.green}✓${C.r} Cause delivered to ${C.b}${targetName}${C.r}  payload: "${payload}"  causes: ${hosted?.lifecycle.causesProcessed ?? '?'}  CCU: ${hosted?.lifecycle.ccuBalance.toFixed(2) ?? '?'}`);
+      } else {
+        console.log(`  ${C.red}✗${C.r} Failed to deliver cause to "${targetName}"`);
+      }
+      break;
+    }
+
+    case 'state': {
+      if (!arg) { console.log(`  ${C.d}Usage: lf state <name>${C.r}`); break; }
+      const hosted = mgr.getByName(arg.trim());
+      if (!hosted) { console.log(`  ${C.red}✗${C.r} Unknown Lifeform: ${arg}`); break; }
+
+      const keys = hosted.state.keys();
+      console.log();
+      console.log(`  ${C.b}State: ${arg}${C.r}  (${keys.length} keys, ~${hosted.state.estimateSize()} bytes)`);
+      console.log(`  ${C.d}────────────────────────────────────────${C.r}`);
+      for (const key of keys.slice(0, 20)) {
+        const val = hosted.state.get(key);
+        const display = val instanceof Set ? `Set(${val.size})` : JSON.stringify(val);
+        console.log(`  ${C.cyan}${key}${C.r} = ${display}`);
+      }
+      if (keys.length > 20) console.log(`  ${C.d}... and ${keys.length - 20} more keys${C.r}`);
+      console.log(`  ${C.d}────────────────────────────────────────${C.r}`);
+      console.log();
+      break;
+    }
+
+    case 'kill': {
+      if (!arg) { console.log(`  ${C.d}Usage: lf kill <name>${C.r}`); break; }
+      const name = arg.trim();
+      if (mgr.kill(name, 'CLI kill')) {
+        console.log(`  ${C.green}✓${C.r} Killed ${C.b}${name}${C.r}`);
+      } else {
+        console.log(`  ${C.red}✗${C.r} Unknown Lifeform: ${name}`);
+      }
+      break;
+    }
+
+    case 'synapse': {
+      const parts = arg.split(/\s+/);
+      if (parts.length < 2) { console.log(`  ${C.d}Usage: lf synapse <from> <to>${C.r}`); break; }
+      if (mgr.createSynapse(parts[0], parts[1])) {
+        console.log(`  ${C.green}✓${C.r} Synapse: ${C.b}${parts[0]}${C.r} → ${C.b}${parts[1]}${C.r}`);
+      } else {
+        console.log(`  ${C.red}✗${C.r} Failed — check names exist`);
+      }
+      break;
+    }
+
+    case 'fuse': {
+      const parts = arg.split(/\s+/);
+      if (parts.length < 2) { console.log(`  ${C.d}Usage: lf fuse <nameA> <nameB> [compositeName]${C.r}`); break; }
+      const [nameA, nameB] = parts;
+      const compositeName = parts[2] || `${nameA}-${nameB}`;
+
+      const hostedA = mgr.getByName(nameA);
+      const hostedB = mgr.getByName(nameB);
+      if (!hostedA || !hostedB) {
+        console.log(`  ${C.red}✗${C.r} Both Lifeforms must exist`);
+        break;
+      }
+
+      const { StateConflictStrategy, FissionTrigger } = await import('../../core/src/types/fusion');
+      const proposal = fusionEngine.propose(hostedA.lifecycle.soul, hostedB.lifecycle.id, {
+        compositeName,
+        stateConflictStrategy: StateConflictStrategy.NAMESPACE_PREFIX,
+        ccuContributionRatio: 0.5,
+        primaryGenome: 'proposer',
+        fissionTriggers: [FissionTrigger.MANUAL_ONLY],
+        maxFusionDurationMs: 0,
+      });
+
+      fusionEngine.accept(proposal.id, hostedB.lifecycle.soul);
+      const record = fusionEngine.execute(
+        proposal.id, hostedA.state, hostedB.state,
+        hostedA.lifecycle.ccuBalance, hostedB.lifecycle.ccuBalance,
+        new Uint8Array(32), new Uint8Array(32),
+      );
+
+      if (record) {
+        console.log(`  ${C.green}✓${C.r} ${C.b}FUSION${C.r}: ${nameA} + ${nameB} → ${C.b}${compositeName}${C.r}`);
+        console.log(`    ${C.d}Pooled CCU: ${record.pooledCcu.toFixed(2)}  Escrow A: ${record.escrowA.toFixed(2)}  Escrow B: ${record.escrowB.toFixed(2)}${C.r}`);
+        console.log(`    ${C.d}Merged state keys: ${record.mergedState?.keys().length ?? 0}  Execution order: ${record.compositeGenome?.executionOrder}${C.r}`);
+        console.log(`    ${C.d}Composite ID: ${toHex(record.compositeSoul.compositeId)}${C.r}`);
+      } else {
+        console.log(`  ${C.red}✗${C.r} Fusion failed`);
+      }
+      break;
+    }
+
+    case 'fission': {
+      if (!arg) { console.log(`  ${C.d}Usage: lf fission <compositeIdPrefix>${C.r}`); break; }
+      const prefix = arg.trim();
+      const active = fusionEngine.getActiveFusions();
+      const match = active.find((r: any) => toHex(r.compositeSoul.compositeId).startsWith(prefix));
+      if (!match) {
+        console.log(`  ${C.red}✗${C.r} No active fusion matching "${prefix}"`);
+        if (active.length > 0) {
+          console.log(`  ${C.d}Active fusions:${C.r}`);
+          for (const f of active) {
+            const comps = f.compositeSoul.components;
+            console.log(`    ${toHex(f.compositeSoul.compositeId)}  ${comps[0].name} + ${comps[1].name}`);
+          }
+        }
+        break;
+      }
+
+      const result = fusionEngine.fission(match.compositeSoul.compositeId, match.mergedState, match.pooledCcu, 'manual');
+      if (result) {
+        console.log(`  ${C.green}✓${C.r} ${C.b}FISSION${C.r}: composite split back into components`);
+        console.log(`    ${C.d}Component A: ${result.componentA.stateKeys.length} keys, ${result.componentA.ccuBalance.toFixed(2)} CCU${C.r}`);
+        console.log(`    ${C.d}Component B: ${result.componentB.stateKeys.length} keys, ${result.componentB.ccuBalance.toFixed(2)} CCU${C.r}`);
+      }
+      break;
+    }
+
+    case 'intent': {
+      const parts = arg.split(/\s+/);
+      if (parts.length < 4) {
+        console.log(`  ${C.d}Usage: lf intent <name> <stateKey> <operator> <value>${C.r}`);
+        console.log(`  ${C.d}Example: lf intent sensor-1 temperature lt 35${C.r}`);
+        console.log(`  ${C.d}Operators: lt gt eq lte gte between${C.r}`);
+        break;
+      }
+      const [name, stateKey, operator, ...valParts] = parts;
+      const hosted = mgr.getByName(name);
+      if (!hosted) { console.log(`  ${C.red}✗${C.r} Unknown Lifeform: ${name}`); break; }
+
+      const { PredicateType, ViolationAction: VA } = await import('../../core/src/types/intent');
+      const rng = (n: number) => { const b = new Uint8Array(n); for (let i=0;i<n;i++) b[i]=Math.floor(Math.random()*256); return b; };
+
+      let value: any = parseFloat(valParts[0]);
+      if (isNaN(value)) value = valParts.join(' ');
+
+      const intent = {
+        id: rng(16), lifeformId: hosted.lifecycle.id,
+        description: `${stateKey} ${operator} ${value}`,
+        predicate: { type: PredicateType.VALUE_CHECK, stateKey, operator: operator as any, value },
+        sampleIntervalMs: 60000, samplesPerInterval: 3,
+        violationAction: VA.NOTIFY, ccuStaked: 10,
+        beneficiaryId: rng(16), activeSince: Date.now(), expiresAt: 0,
+        commitment: rng(64), violationThreshold: 3, consecutiveViolations: 0,
+      };
+
+      intentRegistry.declare(intent);
+
+      // Verify immediately
+      const result = intentVerifier.evaluateIntent(intent, hosted.state);
+      const statusStr = result.satisfied ? `${C.green}SATISFIED${C.r}` : `${C.red}VIOLATED${C.r}`;
+      console.log(`  ${C.green}✓${C.r} Intent declared: ${C.b}${stateKey} ${operator} ${value}${C.r}  Status: ${statusStr}`);
+      console.log(`    ${C.d}Staked: 10 CCU  Threshold: 3 violations  Action: NOTIFY${C.r}`);
+      break;
+    }
+
+    case 'intents': {
+      if (!arg) { console.log(`  ${C.d}Usage: lf intents <name>${C.r}`); break; }
+      const hosted = mgr.getByName(arg.trim());
+      if (!hosted) { console.log(`  ${C.red}✗${C.r} Unknown Lifeform: ${arg}`); break; }
+
+      const intents = intentRegistry.getForLifeform(hosted.lifecycle.id);
+      console.log();
+      if (intents.length === 0) {
+        console.log(`  ${C.d}No intents for "${arg}". Use: lf intent ${arg} <key> <op> <val>${C.r}`);
+      } else {
+        console.log(`  ${C.b}Intents for ${arg} (${intents.length})${C.r}`);
+        console.log(`  ${C.d}────────────────────────────────────────${C.r}`);
+        for (const intent of intents) {
+          const result = intentVerifier.evaluateIntent(intent, hosted.state);
+          const statusColor = result.satisfied ? C.green : C.red;
+          console.log(`  ${statusColor}●${C.r} ${C.b}${intent.description}${C.r}  staked: ${intent.ccuStaked} CCU  violations: ${intent.consecutiveViolations}/${intent.violationThreshold}`);
+        }
+        console.log(`  ${C.d}────────────────────────────────────────${C.r}`);
+      }
+      console.log();
+      break;
+    }
+
+    case 'simulate': {
+      console.log();
+      console.log(`  ${C.cyan}Running Lifeform simulation...${C.r}`);
+      console.log();
+
+      // 1. Spawn two sensor Lifeforms
+      const configA = {
+        name: 'sim-sensor-a', wasmModule: new Uint8Array([0,0x61,0x73,0x6d]),
+        initialState: { temperature: 22, location: 'Floor 1' },
+        initialCcu: 100, minReplicas: 1, maxReplicas: 3, autoMigrate: true,
+        mutationLibraryHash: null, maxCausesPerSecond: 100, maxStateSizeBytes: 1024*1024,
+      };
+      const configB = {
+        name: 'sim-sensor-b', wasmModule: new Uint8Array([0,0x61,0x73,0x6d]),
+        initialState: { temperature: 28, location: 'Floor 2' },
+        initialCcu: 80, minReplicas: 1, maxReplicas: 3, autoMigrate: true,
+        mutationLibraryHash: null, maxCausesPerSecond: 100, maxStateSizeBytes: 1024*1024,
+      };
+
+      const hA = mgr.spawn(configA);
+      const hB = mgr.spawn(configB);
+      if (!hA || !hB) { console.log(`  ${C.red}✗${C.r} Spawn failed — names may be taken. Run: lf kill sim-sensor-a && lf kill sim-sensor-b`); break; }
+
+      // Set handlers
+      mgr.setHandler('sim-sensor-a', async (c: any) => {
+        hA.state.set('causes_received', (hA.state.get('causes_received') ?? 0) + 1);
+        return { stateMutations: 1, outgoingCauses: [] };
+      });
+      mgr.setHandler('sim-sensor-b', async (c: any) => {
+        hB.state.set('causes_received', (hB.state.get('causes_received') ?? 0) + 1);
+        return { stateMutations: 1, outgoingCauses: [] };
+      });
+
+      console.log(`  ${C.green}✓${C.r} Spawned ${C.b}sim-sensor-a${C.r} (Floor 1, 22°C, 100 CCU)`);
+      console.log(`  ${C.green}✓${C.r} Spawned ${C.b}sim-sensor-b${C.r} (Floor 2, 28°C, 80 CCU)`);
+
+      // 2. Create synapse
+      mgr.createSynapse('sim-sensor-a', 'sim-sensor-b');
+      console.log(`  ${C.green}✓${C.r} Synapse: sim-sensor-a → sim-sensor-b`);
+
+      // 3. Send some causes
+      const { CauseType } = await import('../../core/src/types/causal');
+      const rng = (n: number) => { const b = new Uint8Array(n); for (let i=0;i<n;i++) b[i]=Math.floor(Math.random()*256); return b; };
+      for (let i = 0; i < 5; i++) {
+        await mgr.deliverCause('sim-sensor-a', {
+          id: rng(16), type: CauseType.MESSAGE, chainId: rng(16),
+          chainDepth: 0, maxChainDepth: 64, deadlineMs: 0,
+          sourceId: rng(16), sourceType: 'device', targetId: rng(16),
+          payload: new TextEncoder().encode(`reading-${i}`),
+          ccuAttached: 0, expectsResponse: false, correlationId: null, emittedAt: Date.now(),
+        });
+      }
+      console.log(`  ${C.green}✓${C.r} Sent 5 causes to sim-sensor-a (CCU: ${hA.lifecycle.ccuBalance.toFixed(2)})`);
+
+      // 4. Declare intent
+      const { PredicateType, ViolationAction: VA } = await import('../../core/src/types/intent');
+      const intent = {
+        id: rng(16), lifeformId: hA.lifecycle.id,
+        description: 'temperature < 30',
+        predicate: { type: PredicateType.VALUE_CHECK, stateKey: 'temperature', operator: 'lt' as const, value: 30 },
+        sampleIntervalMs: 60000, samplesPerInterval: 3,
+        violationAction: VA.NOTIFY, ccuStaked: 10,
+        beneficiaryId: rng(16), activeSince: Date.now(), expiresAt: 0,
+        commitment: rng(64), violationThreshold: 3, consecutiveViolations: 0,
+      };
+      intentRegistry.declare(intent);
+      const evalResult = intentVerifier.evaluateIntent(intent, hA.state);
+      console.log(`  ${C.green}✓${C.r} Intent: temperature < 30  → ${evalResult.satisfied ? `${C.green}SATISFIED${C.r}` : `${C.red}VIOLATED${C.r}`}`);
+
+      // 5. Fuse
+      const { StateConflictStrategy, FissionTrigger } = await import('../../core/src/types/fusion');
+      const proposal = fusionEngine.propose(hA.lifecycle.soul, hB.lifecycle.id, {
+        compositeName: 'sim-composite',
+        stateConflictStrategy: StateConflictStrategy.NAMESPACE_PREFIX,
+        ccuContributionRatio: 0.5, primaryGenome: 'proposer',
+        fissionTriggers: [FissionTrigger.MANUAL_ONLY], maxFusionDurationMs: 0,
+      });
+      fusionEngine.accept(proposal.id, hB.lifecycle.soul);
+      const fusionRecord = fusionEngine.execute(
+        proposal.id, hA.state, hB.state,
+        hA.lifecycle.ccuBalance, hB.lifecycle.ccuBalance,
+        new Uint8Array(32), new Uint8Array(32),
+      );
+      console.log(`  ${C.green}✓${C.r} ${C.b}FUSION${C.r}: sim-sensor-a + sim-sensor-b → ${C.b}sim-composite${C.r}`);
+      console.log(`    ${C.d}Pooled: ${fusionRecord.pooledCcu.toFixed(2)} CCU  State keys: ${fusionRecord.mergedState.keys().length}${C.r}`);
+
+      // 6. Fission
+      const fissionResult = fusionEngine.fission(fusionRecord.compositeSoul.compositeId, fusionRecord.mergedState, fusionRecord.pooledCcu);
+      console.log(`  ${C.green}✓${C.r} ${C.b}FISSION${C.r}: composite split back`);
+      console.log(`    ${C.d}A: ${fissionResult.componentA.ccuBalance.toFixed(2)} CCU, ${fissionResult.componentA.stateKeys.length} keys${C.r}`);
+      console.log(`    ${C.d}B: ${fissionResult.componentB.ccuBalance.toFixed(2)} CCU, ${fissionResult.componentB.stateKeys.length} keys${C.r}`);
+
+      console.log();
+      console.log(`  ${C.b}Simulation complete.${C.r} Try: lf list, lf state sim-sensor-a, lf intents sim-sensor-a`);
+      console.log();
+      break;
+    }
+
+    default:
+      console.log(`  ${C.d}Usage: lf [status|spawn|list|cause|state|kill|synapse|fuse|fission|intent|intents|simulate]${C.r}`);
   }
 }
 
