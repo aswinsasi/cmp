@@ -28,3 +28,8 @@ npm-debug.log*
 # Environment
 .env
 .env.local
+cmp-data/*.db
+cert-*.json
+mers.json
+*.php
+security-fix.patch

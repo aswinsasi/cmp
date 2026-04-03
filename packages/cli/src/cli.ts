@@ -19,6 +19,7 @@ import type { CMP_MER } from '../../core/src/types/mcl';
 import { DecompositionStrategy } from '../../core/src/types/mcl';
 import { V2Bridge } from '../../core/src/v2-bridge';
 import { doConsciousness, doSpacetime, doWormhole, doV2Status, v2HelpText } from './v2-cli-commands';
+import { doV3Command, v3HelpText } from './v3-cli-commands';
 
 const VERSION = '1.2.0';
 const C = {
@@ -148,6 +149,28 @@ async function cmdStart(): Promise<void> {
   const v2bridge = node.getV2Bridge();
   if (v2bridge) {
     log('◈', C.cyan, 'v2.0 Consciousness active', 'Layers 11-13 (pheromones, spacetime, wormholes)');
+  }
+
+    // ── v3.0: Cortex, Holographic Memory, GPU, Neuromorphic, Entanglement, Meta-Evolution, Dreaming ──
+  let v3bridge: any = null;
+  try {
+    const { V3Bridge } = await import('../../core/src/v3-bridge');
+    v3bridge = new V3Bridge(
+      node.meshIdHex(),
+      () => {
+        try {
+          const peers = node.getPeerTable().getActive();
+          return peers.map((p: any) => ({ deviceId: p.hexId, address: p.transports[0] || '', latencyMs: 5 }));
+        } catch { return []; }
+      },
+      async (deviceId: string, data: Uint8Array) => {
+        try { await node.getTransport().sendTo(deviceId, data); } catch {}
+      },
+    );
+    v3bridge.start();
+    log('◈', C.magenta, 'v3.0 systems active', 'Cortex, Memory, GPU, Neural, Entangle, Evolve, Dream');
+  } catch (err: any) {
+    // v3.0 modules are optional
   }
 
   // ── Layer 9: Precognition (v1.3) ──
@@ -359,7 +382,15 @@ async function cmdStart(): Promise<void> {
     ${C.magenta}metabolism${C.r} [status|mesh|forecast]  Computation Metabolism` : ''}${futureMarket ? `
     ${C.magenta}futures${C.r} [status|list|sell|my]    Temporal Compute Futures` : ''}${organManager ? `
     ${C.magenta}organs${C.r} [status|list|affinity|routing]  Mesh Morphogenesis` : ''}${lfManager ? `
-    ${C.magenta}lf${C.r} [status|spawn|list|cause|kill|...]  Lifeforms (v1.4)` : ''}
+    ${C.magenta}lf${C.r} [status|spawn|list|cause|kill|...]  Lifeforms (v1.4)` : ''}${v3bridge ? `
+    ${C.magenta}v3${C.r}                           v3.0 status (Cortex, Memory, GPU, Neural, Dream)
+    ${C.magenta}memory${C.r} [write|read|delete]    Holographic Memory (Layer 15)
+    ${C.magenta}cortex${C.r} [load|infer|unload]    Mesh Cortex (Layer 14)
+    ${C.magenta}gpu${C.r} [matmul|relu]             Mesh GPU (Layer 16)
+    ${C.magenta}neural${C.r} [topology|log]         Neuromorphic Router
+    ${C.magenta}entangle${C.r} [create|break|list]  Computation Entanglement
+    ${C.magenta}evolve${C.r} [drift|history]        Protocol Meta-Evolution
+    ${C.magenta}dream3${C.r} [now|fossils|report]   Mesh Dreaming` : ''}
     ${C.cyan}help${C.r}                         Show all commands
     ${C.cyan}quit${C.r}                         Shutdown
 `);
@@ -586,6 +617,22 @@ async function cmdStart(): Promise<void> {
         doWormhole(v2bridge, arg);
         break;
 
+case 'memory':
+      case 'cortex':
+      case 'gpu':
+      case 'neural':
+      case 'entangle':
+      case 'evolve':
+      case 'dream3':
+      case 'v3':
+        {
+          if (!v3bridge) { console.log(`  ${C.d}v3.0 not available.${C.r}`); break; }
+          const v3Sub = (arg.split(/\s+/)[0] || '').toLowerCase();
+          const v3Arg = arg.substring(v3Sub.length).trim();
+          await doV3Command(v3bridge, cmd, v3Sub, v3Arg);
+        }
+        break;
+ 
       case 'help':
       case 'h':
         console.log(`
@@ -658,7 +705,8 @@ async function cmdStart(): Promise<void> {
     ${C.magenta}lf intents${C.r} <name>             List intents for a Lifeform
     ${C.magenta}lf simulate${C.r}                   Run a full demo simulation
 ${v2HelpText()}
-
+${v3bridge ? v3HelpText() : ''}
+ 
     ${C.cyan}quit${C.r}                         Shutdown
 `);
         break;
@@ -667,6 +715,7 @@ ${v2HelpText()}
       case 'q':
       case 'exit':
         console.log(`\n  ${C.yellow}Shutting down...${C.r}`);
+        if (v3bridge) v3bridge.stop();
         if (lfManager) lfManager.stop();
         await node.stop();
         console.log(`  ${C.green}Node stopped.${C.r}\n`);

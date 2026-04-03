@@ -11,11 +11,11 @@
     <a href="#contributing">Contributing</a>
   </p>
   <p align="center">
-    <img src="https://img.shields.io/badge/version-2.0.0-blue" alt="version" />
-    <img src="https://img.shields.io/badge/tests-827%20passing-brightgreen" alt="tests" />
-    <img src="https://img.shields.io/badge/lines-68%2C000%2B-informational" alt="lines" />
+    <img src="https://img.shields.io/badge/version-3.0.0-blue" alt="version" />
+    <img src="https://img.shields.io/badge/tests-1000%20passing-brightgreen" alt="tests" />
+    <img src="https://img.shields.io/badge/lines-78%2C000%2B-informational" alt="lines" />
     <img src="https://img.shields.io/badge/license-MIT-green" alt="license" />
-    <img src="https://img.shields.io/badge/layers-13-purple" alt="layers" />
+    <img src="https://img.shields.io/badge/layers-16-purple" alt="layers" />
   </p>
 </p>
 
@@ -166,7 +166,10 @@ CMP implements a 13-layer protocol stack — the deepest of any peer-to-peer sys
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  Layer 13: Cross-Mesh Wormholes     (Federation)    v2.0│
+│  Layer 16: Mesh GPU       (WebGPU sharing)          v3.0|
+|  Layer 15: Holographic    (Erasure-coded memory)    v3.0|
+|  Layer 14: Mesh Cortex    (Distributed AI)          v3.0|  
+|  Layer 13: Cross-Mesh Wormholes     (Federation)    v2.0│
 │  Layer 12: Computation Spacetime    (Temporal Fork) v2.0│
 │  Layer 11: Collective Consciousness (Stigmergy)     v2.0│
 ├─────────────────────────────────────────────────────────┤
