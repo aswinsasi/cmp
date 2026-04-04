@@ -155,19 +155,39 @@ async function cmdStart(): Promise<void> {
   let v3bridge: any = null;
   try {
     const { V3Bridge } = await import('../../core/src/v3-bridge');
+    const { encodeMessage } = await import('../../core/src/layers/serializer');
+
+    const peerTable = node.getPeerTable();
+    const transport = node.getTransport();
+
+    const v3FrameTransport = {
+      encodeFrame: (type: number, payload: Uint8Array) => encodeMessage(type as any, payload),
+      sendTo: async (addr: string, data: Uint8Array) => transport.sendTo(addr, data),
+    };
+
+    const v3PeerResolver = {
+      getAddressForMeshId: (meshIdHex: string): string | null => {
+        return (node as any).resolveAddress(meshIdHex);
+      },
+      getLocalMeshId: () => node.meshIdHex(),
+    };
+
     v3bridge = new V3Bridge(
       node.meshIdHex(),
       () => {
         try {
-          const peers = node.getPeerTable().getActive();
-          return peers.map((p: any) => ({ deviceId: p.hexId, address: p.transports[0] || '', latencyMs: 5 }));
+          return peerTable.getActive().map((p: any) => ({
+            deviceId: p.hexId,
+            address: (node as any).resolveAddress(p.hexId) || '',
+            latencyMs: 5,
+          }));
         } catch { return []; }
       },
-      async (deviceId: string, data: Uint8Array) => {
-        try { await node.getTransport().sendTo(deviceId, data); } catch {}
-      },
+      v3FrameTransport,
+      v3PeerResolver,
     );
     v3bridge.start();
+    node.setV3Handler(v3bridge);
     log('◈', C.magenta, 'v3.0 systems active', 'Cortex, Memory, GPU, Neural, Entangle, Evolve, Dream');
   } catch (err: any) {
     // v3.0 modules are optional

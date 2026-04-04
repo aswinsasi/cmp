@@ -180,6 +180,7 @@ export class CMPNode {
 
   /** Optional Lifeform transport handler (v1.4) */
   private lifeformHandler: any | null = null;
+  private v3handler: any | null = null;
 
   /** V2 Bridge: Layers 11-13 (v2.0) */
   private v2bridge: V2Bridge | null = null;
@@ -976,6 +977,18 @@ export class CMPNode {
     this.lifeformHandler = handler;
   }
 
+  setV3Handler(handler: any): void {
+    this.v3handler = handler;
+  }
+
+  resolveAddress(meshIdHex: string): string | null {
+    const bytes = new Uint8Array(meshIdHex.length / 2);
+    for (let i = 0; i < meshIdHex.length; i += 2) {
+      bytes[i / 2] = parseInt(meshIdHex.substring(i, i + 2), 16);
+    }
+    return this.discovery.resolveAddress(bytes) || null;
+  }
+
   /**
    * Get the transport for direct access (used by LifeformTransportHandler).
    */
@@ -1234,6 +1247,10 @@ export class CMPNode {
         // v2.0 message routing (Layers 11-13) — types 0xE1-0xF1
         if (msg.type >= 0xE1 && msg.type <= 0xF1 && this.v2bridge) {
           this.v2bridge.handleMessage(msg.type, msg.payload);
+          break;
+        }
+        if (msg.type >= 0xF2 && msg.type <= 0xFC && this.v3handler) {
+          this.v3handler.handleMessage(msg.type, msg.payload, event.peerAddress || '');
           break;
         }
         // MCL message routing (v1.2)

@@ -46,9 +46,11 @@
     "packages/*"
   ],
   "dependencies": {
+    "@roamhq/wrtc": "^0.10.0",
     "binaryen": "^125.0.0",
     "sql.js": "^1.14.1",
-    "tweetnacl": "^1.0.3"
+    "tweetnacl": "^1.0.3",
+    "ws": "^8.20.0"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",

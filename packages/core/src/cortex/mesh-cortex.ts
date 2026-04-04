@@ -281,6 +281,28 @@ export class MeshCortex {
     return output;
   }
 
+  /**
+   * Execute ALL local partitions for a model.
+   * Used by remote activation handler — partition IDs differ between devices,
+   * so we run through whatever local executors exist for this model.
+   */
+  executeAllLocal(modelId: string, input: Tensor): Tensor | null {
+    const model = this.models.get(modelId);
+    if (!model || model.localExecutors.size === 0) return null;
+
+    // Sort executors by layer range to ensure correct order
+    const sorted = [...model.localExecutors.values()].sort(
+      (a, b) => a.layerRange[0] - b.layerRange[0]
+    );
+
+    let current = input;
+    for (const executor of sorted) {
+      const { output } = executor.execute(current);
+      current = output;
+    }
+    return current;
+  }
+
   // ═══════════════════════════════════════
   // Rebalance
   // ═══════════════════════════════════════
