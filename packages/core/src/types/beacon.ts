@@ -124,4 +124,16 @@ export enum MessageType {
   ORGAN_JOIN = 0xB2,
   ORGAN_ACK = 0xB3,
   ORGAN_ROUTE = 0xB4,
+
+  // V4 Supercomputer (v4.0) — range 0xF2-0xFD
+  V4_LOAD_REPORT     = 0xF2,
+  V4_JOB_ANNOUNCE    = 0xF3,
+  V4_JOB_RESULT      = 0xF4,
+  V4_PIPE_DATA       = 0xF5,
+  V4_PIPE_BACKPRESSURE = 0xF6,
+  V4_CATALOG_GOSSIP  = 0xF7,
+  V4_CODE_SHIP       = 0xF8,
+  V4_CODE_RESULT     = 0xF9,
+  V4_TASK_CANCEL     = 0xFA,
+  V4_TASK_CANCEL_ACK = 0xFB,
 }

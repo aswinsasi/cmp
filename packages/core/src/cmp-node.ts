@@ -20,6 +20,7 @@ import { MultiTransport } from '../../transport/src/multi-transport';
 import { VirtualTransport, VirtualNetwork } from '../../transport/src/virtual-transport';
 
 import { V2Bridge } from './v2-bridge';
+import { V4WireHandler } from './v4-wire-handler';
 
 import {
   MeshId, TaskId, SessionKey, Hash256,
@@ -180,10 +181,10 @@ export class CMPNode {
 
   /** Optional Lifeform transport handler (v1.4) */
   private lifeformHandler: any | null = null;
-  private v3handler: any | null = null;
 
   /** V2 Bridge: Layers 11-13 (v2.0) */
   private v2bridge: V2Bridge | null = null;
+  private v4WireHandler: V4WireHandler = new V4WireHandler();
 
   /**
    * Pending remote results: taskHex → { resolve, assembler, timeout, resultCount }
@@ -374,6 +375,28 @@ export class CMPNode {
 
     // Start v2.0 layers
     if (this.v2bridge) this.v2bridge.start();
+
+    // Wire v4 transport — enables CODE_SHIP, TASK_CANCEL, CATALOG_GOSSIP etc.
+    this.v4WireHandler.setTransport(
+      {
+        sendTo: (addr, data) => this.transport.sendTo(addr, data),
+        broadcast: (data) => this.transport.broadcast(data),
+      },
+      {
+        resolveAddress: (meshIdHex: string) => {
+          const peer = this.peerTable.get(meshIdHex);
+          if (!peer) return null;
+          // Use the first transport as address (LAN: ip:port)
+          return peer.transports[0] ?? null;
+        },
+        getActivePeerAddresses: () => {
+          return this.peerTable.getActive().map(p => ({
+            meshIdHex: p.hexId,
+            address: p.transports[0] ?? '',
+          }));
+        },
+      }
+    );
 
     // Initialize own ledger account and apply decay to any existing accounts
     this.ledger.getAccount(this.meshIdHex());
@@ -977,18 +1000,6 @@ export class CMPNode {
     this.lifeformHandler = handler;
   }
 
-  setV3Handler(handler: any): void {
-    this.v3handler = handler;
-  }
-
-  resolveAddress(meshIdHex: string): string | null {
-    const bytes = new Uint8Array(meshIdHex.length / 2);
-    for (let i = 0; i < meshIdHex.length; i += 2) {
-      bytes[i / 2] = parseInt(meshIdHex.substring(i, i + 2), 16);
-    }
-    return this.discovery.resolveAddress(bytes) || null;
-  }
-
   /**
    * Get the transport for direct access (used by LifeformTransportHandler).
    */
@@ -1015,6 +1026,13 @@ export class CMPNode {
    */
   getLedger(): IncentiveLedger {
     return this.ledger;
+  }
+
+  /**
+   * Get the V4 wire handler for registering v4 modules.
+   */
+  getV4WireHandler(): V4WireHandler {
+    return this.v4WireHandler;
   }
 
   /**
@@ -1239,6 +1257,11 @@ export class CMPNode {
         this.handleCheckpointStore(msg.payload);
         break;
       default:
+        // V4 Supercomputer wire routing (0xF2-0xFB)
+        if (this.v4WireHandler.isV4Message(msg.type)) {
+          this.v4WireHandler.handleMessage(msg.type, msg.payload, event.peerAddress);
+          break;
+        }
         // Lifeform message routing (v1.4) — types 0xC0-0xE0
         if (msg.type >= 0xC0 && msg.type <= 0xE0 && this.lifeformHandler) {
           this.lifeformHandler.handleIncoming(msg.type, msg.payload, event.peerAddress);
@@ -1247,10 +1270,6 @@ export class CMPNode {
         // v2.0 message routing (Layers 11-13) — types 0xE1-0xF1
         if (msg.type >= 0xE1 && msg.type <= 0xF1 && this.v2bridge) {
           this.v2bridge.handleMessage(msg.type, msg.payload);
-          break;
-        }
-        if (msg.type >= 0xF2 && msg.type <= 0xFC && this.v3handler) {
-          this.v3handler.handleMessage(msg.type, msg.payload, event.peerAddress || '');
           break;
         }
         // MCL message routing (v1.2)

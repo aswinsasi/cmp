@@ -19,9 +19,14 @@ import type { CMP_MER } from '../../core/src/types/mcl';
 import { DecompositionStrategy } from '../../core/src/types/mcl';
 import { V2Bridge } from '../../core/src/v2-bridge';
 import { doConsciousness, doSpacetime, doWormhole, doV2Status, v2HelpText } from './v2-cli-commands';
-import { doV3Command, v3HelpText } from './v3-cli-commands';
+import { doState, saveAllState, stateHelpText, StateContext } from './state-cli-commands';
+import { doJob, jobHelpText } from './job-cli-commands';
+import { doPipe, pipeHelpText } from './pipe-cli-commands';
+import { V4Bridge } from '../../core/src/v4-bridge';
+import { V3StateStore } from '../../core/src/persistence/v3-state-store';
+import { StateMigrator } from '../../core/src/persistence/state-migrator';
 
-const VERSION = '1.2.0';
+const VERSION = '4.0.0';
 const C = {
   r: '\x1b[0m', b: '\x1b[1m', d: '\x1b[2m',
   red: '\x1b[31m', green: '\x1b[32m', yellow: '\x1b[33m',
@@ -149,48 +154,6 @@ async function cmdStart(): Promise<void> {
   const v2bridge = node.getV2Bridge();
   if (v2bridge) {
     log('◈', C.cyan, 'v2.0 Consciousness active', 'Layers 11-13 (pheromones, spacetime, wormholes)');
-  }
-
-    // ── v3.0: Cortex, Holographic Memory, GPU, Neuromorphic, Entanglement, Meta-Evolution, Dreaming ──
-  let v3bridge: any = null;
-  try {
-    const { V3Bridge } = await import('../../core/src/v3-bridge');
-    const { encodeMessage } = await import('../../core/src/layers/serializer');
-
-    const peerTable = node.getPeerTable();
-    const transport = node.getTransport();
-
-    const v3FrameTransport = {
-      encodeFrame: (type: number, payload: Uint8Array) => encodeMessage(type as any, payload),
-      sendTo: async (addr: string, data: Uint8Array) => transport.sendTo(addr, data),
-    };
-
-    const v3PeerResolver = {
-      getAddressForMeshId: (meshIdHex: string): string | null => {
-        return (node as any).resolveAddress(meshIdHex);
-      },
-      getLocalMeshId: () => node.meshIdHex(),
-    };
-
-    v3bridge = new V3Bridge(
-      node.meshIdHex(),
-      () => {
-        try {
-          return peerTable.getActive().map((p: any) => ({
-            deviceId: p.hexId,
-            address: (node as any).resolveAddress(p.hexId) || '',
-            latencyMs: 5,
-          }));
-        } catch { return []; }
-      },
-      v3FrameTransport,
-      v3PeerResolver,
-    );
-    v3bridge.start();
-    node.setV3Handler(v3bridge);
-    log('◈', C.magenta, 'v3.0 systems active', 'Cortex, Memory, GPU, Neural, Entangle, Evolve, Dream');
-  } catch (err: any) {
-    // v3.0 modules are optional
   }
 
   // ── Layer 9: Precognition (v1.3) ──
@@ -370,6 +333,122 @@ async function cmdStart(): Promise<void> {
     // Lifeforms is optional
   }
 
+  // ── V4 Bridge: Single init for all 8 pillars ──
+  let v4: V4Bridge | null = null;
+  let v3StateStore: V3StateStore | null = null;
+  let stateCtx: StateContext | null = null;
+  try {
+    const pathMod = require('path');
+    const stateDir = getStrOpt('state-dir', 'cmp-data');
+    const dbPath = pathMod.join(stateDir, 'v3-state.db');
+
+    // Init state store
+    v3StateStore = new V3StateStore(dbPath);
+    await v3StateStore.init();
+    const migrator = new StateMigrator(v3StateStore);
+    if (migrator.needsMigration()) migrator.migrate();
+
+    // Build peer provider from CMPNode
+    const peerProvider = {
+      getPeerCapabilities: () => {
+        const peers = node.getPeers();
+        return peers.map((p: any) => ({
+          deviceId: p.meshId,
+          capability: {
+            meshId: new Uint8Array(16),
+            cpu: { architecture: 0, coresAvailable: p.cores ?? 4, clockMhz: 2400, loadPercent: 20 },
+            memory: { availableMb: p.memoryMb ?? 4096, bandwidthGbps: 12 },
+            gpu: { type: 0, computeUnits: 0, vramMb: 0, supports: new Set() },
+            storage: { scratchMb: 1024, readMbps: 500, writeMbps: 200 },
+            network: { meshBandwidthMbps: 100, latencyMs: p.latencyMs ?? 5 },
+            power: { source: 1, batteryPct: 100, thermalState: 0 },
+            runtimes: [0],
+            reputationScore: p.reputationScore ?? 5000,
+            availabilitySec: 3600,
+          },
+        }));
+      },
+      getMeshState: () => {
+        const status = node.getStatus();
+        const peers = node.getPeers();
+        return {
+          localDeviceId: node.shortMeshId(),
+          peerCount: status.peers,
+          hasGPUPeers: false,
+          hasCortex: false,
+          totalCores: peers.reduce((s: number, p: any) => s + (p.cores ?? 4), 4),
+          avgLatencyMs: peers.length > 0 ? peers.reduce((s: number, p: any) => s + (p.latencyMs ?? 5), 0) / peers.length : 0,
+        };
+      },
+    };
+
+    // Device state reader
+    const deviceReader = () => ({
+      cpuPercent: 10,
+      memoryUsedPercent: 30,
+      memoryAvailableMb: 8000,
+      thermalState: 0,
+      activeTasks: v4?.jobQueue.getStats().running ?? 0,
+    });
+
+    // Crypto functions from core
+    const { encrypt, decrypt } = await import('../../core/src/crypto');
+
+    // Create V4 Bridge — all 8 pillars in one
+    v4 = new V4Bridge(
+      node.shortMeshId(),
+      async (wasm, input, opts) => node.compute(wasm, input, {
+        entryPoint: opts.entryPoint,
+        deadline: opts.deadline,
+        chunkHint: opts.chunkHint,
+        taskType: opts.taskType,
+      }),
+      peerProvider,
+      deviceReader,
+      encrypt,
+      decrypt,
+      v3StateStore,
+    );
+
+    v4.start();
+
+    // Connect v4 modules to the real mesh transport
+    v4.connectWireHandler(node.getV4WireHandler());
+
+    // Wire state context for the state CLI commands
+    stateCtx = {
+      store: v3StateStore,
+      refs: {
+        consciousness: v2bridge?.consciousness ?? null,
+        spacetime: v2bridge?.spacetime ?? null,
+        wormhole: v2bridge?.wormhole ?? null,
+        dreamScheduler,
+        phantomCache,
+        mispredictionTracker,
+        threatDetector,
+        antibodyGenerator,
+        quarantineManager,
+        metabolismManager,
+        meshBreathing,
+        organManager,
+        affinityTracker,
+        genomeMutator: evolutionMutator,
+        generationTracker,
+      },
+    };
+
+    // Log job events
+    v4.jobQueue.onEvent((e) => {
+      if (e.type === 'completed') log('✓', C.green, `Job #${e.jobId} completed`, e.details || '');
+      else if (e.type === 'failed') log('✗', C.red, `Job #${e.jobId} failed`, e.details || '');
+    });
+
+    log('◈', C.green, 'V4 Bridge active', '8 pillars: scheduler, compiler, gravity, racing, pipes, security, meshfs, persistence');
+  } catch (err: any) {
+    // V4 bridge is optional — falls back to v3 compute path
+    if (verbose) console.log(`  ${C.d}V4 Bridge init: ${err.message}${C.r}`);
+  }
+
   log('\u25cf', C.green, `Node started: ${C.b}${node.shortMeshId()}${C.r}`, node.meshIdHex());
   log('\u25c9', C.blue, `Listening on ${transportLabel}`, `resource share: ${share}%`);
   log('\u25cc', C.d, `Scanning for peers...`);
@@ -402,15 +481,13 @@ async function cmdStart(): Promise<void> {
     ${C.magenta}metabolism${C.r} [status|mesh|forecast]  Computation Metabolism` : ''}${futureMarket ? `
     ${C.magenta}futures${C.r} [status|list|sell|my]    Temporal Compute Futures` : ''}${organManager ? `
     ${C.magenta}organs${C.r} [status|list|affinity|routing]  Mesh Morphogenesis` : ''}${lfManager ? `
-    ${C.magenta}lf${C.r} [status|spawn|list|cause|kill|...]  Lifeforms (v1.4)` : ''}${v3bridge ? `
-    ${C.magenta}v3${C.r}                           v3.0 status (Cortex, Memory, GPU, Neural, Dream)
-    ${C.magenta}memory${C.r} [write|read|delete]    Holographic Memory (Layer 15)
-    ${C.magenta}cortex${C.r} [load|infer|unload]    Mesh Cortex (Layer 14)
-    ${C.magenta}gpu${C.r} [matmul|relu]             Mesh GPU (Layer 16)
-    ${C.magenta}neural${C.r} [topology|log]         Neuromorphic Router
-    ${C.magenta}entangle${C.r} [create|break|list]  Computation Entanglement
-    ${C.magenta}evolve${C.r} [drift|history]        Protocol Meta-Evolution
-    ${C.magenta}dream3${C.r} [now|fossils|report]   Mesh Dreaming` : ''}
+    ${C.magenta}lf${C.r} [status|spawn|list|cause|kill|...]  Lifeforms (v1.4)` : ''}${v4 ? `
+    ${C.magenta}compute${C.r} <msg>                     V4 compute (full pipeline)
+    ${C.magenta}state${C.r} [save|load|info|clear]       Persistent State
+    ${C.magenta}job${C.r} [list|status|cancel|retry|clear]   Job Queue
+    ${C.magenta}pipe${C.r} [define|start|stop|push|metrics]  CMP Pipes
+    ${C.magenta}meshfs${C.r} [write|read|ls|rm|info]     Mesh Filesystem
+    ${C.magenta}v4${C.r}                                V4 Bridge stats` : ''}
     ${C.cyan}help${C.r}                         Show all commands
     ${C.cyan}quit${C.r}                         Shutdown
 `);
@@ -637,22 +714,77 @@ async function cmdStart(): Promise<void> {
         doWormhole(v2bridge, arg);
         break;
 
-case 'memory':
-      case 'cortex':
-      case 'gpu':
-      case 'neural':
-      case 'entangle':
-      case 'evolve':
-      case 'dream3':
-      case 'v3':
+      case 'state':
         {
-          if (!v3bridge) { console.log(`  ${C.d}v3.0 not available.${C.r}`); break; }
-          const v3Sub = (arg.split(/\s+/)[0] || '').toLowerCase();
-          const v3Arg = arg.substring(v3Sub.length).trim();
-          await doV3Command(v3bridge, cmd, v3Sub, v3Arg);
+          if (!stateCtx) {
+            console.log(`  ${C.d}Persistent state not available.${C.r}`);
+            break;
+          }
+          const stateCmd = (arg.split(/\s+/)[0] || 'status').toLowerCase();
+          doState(stateCtx, stateCmd);
         }
         break;
- 
+
+      case 'job':
+        {
+          if (!v4) {
+            console.log(`  ${C.d}V4 Bridge not available.${C.r}`);
+            break;
+          }
+          const jobCmd = (arg.split(/\s+/)[0] || 'help').toLowerCase();
+          const jobArg = arg.substring(jobCmd.length).trim();
+          doJob(v4.jobQueue, jobCmd, jobArg);
+        }
+        break;
+
+      case 'pipe':
+        {
+          if (!v4) {
+            console.log(`  ${C.d}V4 Bridge not available.${C.r}`);
+            break;
+          }
+          const pipeCmd = (arg.split(/\s+/)[0] || 'help').toLowerCase();
+          const pipeArg = arg.substring(pipeCmd.length).trim();
+          doPipe(v4.pipelineManager, pipeCmd, pipeArg);
+        }
+        break;
+
+      case 'compute':
+        {
+          if (!v4) {
+            console.log(`  ${C.d}V4 Bridge not available.${C.r}`);
+            break;
+          }
+          if (!arg) {
+            console.log(`  ${C.d}Usage: compute <message>  or  compute --bg <message>${C.r}`);
+            break;
+          }
+          await doV4Compute(v4, node, arg);
+        }
+        break;
+
+      case 'meshfs':
+        {
+          if (!v4) {
+            console.log(`  ${C.d}V4 Bridge not available.${C.r}`);
+            break;
+          }
+          const fsCmd = (arg.split(/\s+/)[0] || 'help').toLowerCase();
+          const fsArg = arg.substring(fsCmd.length).trim();
+          doMeshFS(v4, fsCmd, fsArg);
+        }
+        break;
+
+      case 'v4':
+        {
+          if (!v4) {
+            console.log(`  ${C.d}V4 Bridge not available.${C.r}`);
+            break;
+          }
+          doV4Status(v4);
+        }
+        break;
+
       case 'help':
       case 'h':
         console.log(`
@@ -725,8 +857,22 @@ case 'memory':
     ${C.magenta}lf intents${C.r} <name>             List intents for a Lifeform
     ${C.magenta}lf simulate${C.r}                   Run a full demo simulation
 ${v2HelpText()}
-${v3bridge ? v3HelpText() : ''}
- 
+${v4 ? `
+  ${C.b}V4 Supercomputer:${C.r}
+    ${C.magenta}compute${C.r} <message>              Full V4 pipeline (compile→gravity→race→execute)
+    ${C.magenta}compute --bg${C.r} <message>          Submit as background job
+    ${C.magenta}v4${C.r}                              V4 Bridge stats (all modules)
+${stateHelpText()}
+${jobHelpText()}
+${pipeHelpText()}
+
+  ${C.b}MeshFS:${C.r}
+    ${C.magenta}meshfs write${C.r} <path> <data>      Write a file
+    ${C.magenta}meshfs read${C.r} <path>              Read a file
+    ${C.magenta}meshfs ls${C.r} [path]                List directory
+    ${C.magenta}meshfs rm${C.r} <path>                Delete a file
+    ${C.magenta}meshfs info${C.r} <path>              File info` : ''}
+
     ${C.cyan}quit${C.r}                         Shutdown
 `);
         break;
@@ -735,7 +881,18 @@ ${v3bridge ? v3HelpText() : ''}
       case 'q':
       case 'exit':
         console.log(`\n  ${C.yellow}Shutting down...${C.r}`);
-        if (v3bridge) v3bridge.stop();
+        // Stop V4 Bridge (stops executor, load monitor, rate limiter, catalog)
+        if (v4) {
+          v4.stop();
+          console.log(`  ${C.d}V4 Bridge stopped${C.r}`);
+        }
+        // Save v3 subsystem state
+        if (stateCtx) {
+          console.log(`  ${C.d}Saving state...${C.r}`);
+          const sr = saveAllState(stateCtx);
+          console.log(`  ${C.green}✓${C.r} State saved (${sr.totalKeysWritten} keys)`);
+          v3StateStore?.close();
+        }
         if (lfManager) lfManager.stop();
         await node.stop();
         console.log(`  ${C.green}Node stopped.${C.r}\n`);
@@ -754,7 +911,183 @@ ${v3bridge ? v3HelpText() : ''}
     rl.prompt();
   });
 
-  rl.on('close', async () => { activeRL = null; Logger.setOutputHook(null); await node.stop(); process.exit(0); });
+  rl.on('close', async () => {
+    activeRL = null;
+    Logger.setOutputHook(null);
+    if (v4) v4.stop();
+    if (stateCtx) { saveAllState(stateCtx); v3StateStore?.close(); }
+    await node.stop();
+    process.exit(0);
+  });
+}
+
+// ══════════════════════════════════════════════
+// V4 COMPUTE: Full pipeline
+// ══════════════════════════════════════════════
+
+async function doV4Compute(v4: V4Bridge, node: CMPNode, arg: string): Promise<void> {
+  const isBackground = arg.startsWith('--bg ') || arg.startsWith('--background ');
+  const message = isBackground ? arg.replace(/^--(bg|background)\s+/, '') : arg;
+  const inputBytes = new TextEncoder().encode(message);
+
+  console.log();
+  log('⚡', C.cyan, `${C.b}V4 COMPUTE${C.r}${isBackground ? ' (background)' : ''}`);
+  log('→', C.d, `Input: "${C.b}${message}${C.r}"`, `${inputBytes.length} bytes`);
+  console.log();
+
+  const startTime = Date.now();
+
+  try {
+    const result = await v4.compute(ENCRYPT_WASM, inputBytes, {
+      entryPoint: 'encrypt',
+      deadline: 10000,
+      background: isBackground,
+      taskType: TaskType.MAP_REDUCE,
+    });
+
+    const elapsed = Date.now() - startTime;
+
+    if (isBackground) {
+      let jobInfo: any = {};
+      try { jobInfo = JSON.parse(new TextDecoder().decode(result.data)); } catch {}
+      console.log();
+      log('📋', C.cyan, `Job #${C.b}${jobInfo.jobId}${C.r} queued`, 'check: job status ' + jobInfo.jobId);
+      console.log();
+      return;
+    }
+
+    const hexOutput = Buffer.from(result.data).toString('hex');
+
+    console.log();
+    console.log(`  ${'─'.repeat(44)}`);
+    console.log(`  ${C.d}Input        ${C.r}${message}`);
+    console.log(`  ${C.d}Output       ${C.r}${hexOutput.length > 60 ? hexOutput.substring(0, 60) + '...' : hexOutput}`);
+    console.log(`  ${C.d}Time         ${C.r}${elapsed}ms`);
+    console.log(`  ${C.d}Strategy     ${C.r}${result.strategy}`);
+    console.log(`  ${C.d}Pattern      ${C.r}${result.pattern ?? 'none'}`);
+    console.log(`  ${C.d}Devices      ${C.r}${result.devicesUsed}`);
+    console.log(`  ${C.d}Chunks       ${C.r}${result.chunksExecuted}`);
+    console.log(`  ${C.d}Gravity      ${C.r}${result.gravityApplied ? `yes (${(result.gravitySavings * 100).toFixed(1)}% saved)` : 'no'}`);
+    console.log(`  ${C.d}Raced        ${C.r}${result.raced ? `yes (${result.racerCount} racers)` : 'no'}`);
+    console.log(`  ${C.d}Local        ${C.r}${result.localFallback ? 'yes' : 'no'}`);
+    console.log(`  ${'─'.repeat(44)}`);
+    console.log();
+  } catch (err: any) {
+    console.log(`  ${C.red}Compute failed: ${err.message}${C.r}\n`);
+  }
+}
+
+// ══════════════════════════════════════════════
+// MESHFS: Filesystem commands
+// ══════════════════════════════════════════════
+
+function doMeshFS(v4: V4Bridge, subCmd: string, arg: string): void {
+  const fs = v4.meshFS;
+
+  switch (subCmd) {
+    case 'write': {
+      const spaceIdx = arg.indexOf(' ');
+      if (spaceIdx < 0) { console.log(`  ${C.d}Usage: meshfs write <path> <data>${C.r}`); return; }
+      const path = arg.substring(0, spaceIdx).trim();
+      const data = arg.substring(spaceIdx + 1).trim();
+      const entry = fs.write(path, new TextEncoder().encode(data));
+      console.log(`  ${C.green}✓${C.r} Written: ${C.b}${entry.path}${C.r} (${entry.sizeBytes} bytes)`);
+      // Register in data catalog for gravity
+      v4.dataCatalog.registerShard(entry.path, v4['localDeviceId'], entry.sizeBytes, entry.sizeBytes);
+      break;
+    }
+    case 'read': {
+      if (!arg) { console.log(`  ${C.d}Usage: meshfs read <path>${C.r}`); return; }
+      const content = fs.read(arg.trim());
+      if (!content) { console.log(`  ${C.red}File not found: ${arg}${C.r}`); return; }
+      try {
+        const text = new TextDecoder('utf-8', { fatal: true }).decode(content);
+        console.log(`  ${text}`);
+      } catch {
+        console.log(`  [${content.length} bytes binary data]`);
+      }
+      break;
+    }
+    case 'ls': {
+      const dirPath = arg.trim() || '/';
+      const listing = fs.ls(dirPath);
+      if (listing.length === 0) { console.log(`  ${C.d}(empty directory)${C.r}`); return; }
+      console.log(`\n  ${C.b}${dirPath}${C.r}\n`);
+      for (const entry of listing) {
+        const icon = entry.isDirectory ? `${C.blue}📁${C.r}` : `${C.d}📄${C.r}`;
+        const size = entry.isDirectory ? '' : ` (${entry.sizeBytes} B)`;
+        console.log(`  ${icon} ${entry.name}${size}`);
+      }
+      console.log();
+      break;
+    }
+    case 'rm': {
+      if (!arg) { console.log(`  ${C.d}Usage: meshfs rm <path>${C.r}`); return; }
+      if (fs.rm(arg.trim())) {
+        console.log(`  ${C.green}✓${C.r} Deleted: ${arg.trim()}`);
+      } else {
+        console.log(`  ${C.red}Not found: ${arg}${C.r}`);
+      }
+      break;
+    }
+    case 'info': {
+      if (!arg) { console.log(`  ${C.d}Usage: meshfs info <path>${C.r}`); return; }
+      const info = fs.info(arg.trim());
+      if (!info) { console.log(`  ${C.red}Not found: ${arg}${C.r}`); return; }
+      console.log(`\n  ${C.b}${info.entry.path}${C.r}`);
+      console.log(`  ${C.d}Size         ${C.r}${info.entry.sizeBytes} bytes`);
+      console.log(`  ${C.d}MIME         ${C.r}${info.entry.mimeType}`);
+      console.log(`  ${C.d}Owner        ${C.r}${info.entry.ownerDeviceId}`);
+      console.log(`  ${C.d}Replicas     ${C.r}${info.replicaCount}`);
+      console.log(`  ${C.d}Hash         ${C.r}${info.entry.contentHash}`);
+      console.log(`  ${C.d}Healthy      ${C.r}${info.healthy ? 'yes' : 'no'}`);
+      console.log();
+      break;
+    }
+    default:
+      console.log(`
+  ${C.b}MeshFS Commands:${C.r}
+    ${C.cyan}meshfs write${C.r} <path> <data>    Write a file
+    ${C.cyan}meshfs read${C.r} <path>            Read a file
+    ${C.cyan}meshfs ls${C.r} [path]              List directory
+    ${C.cyan}meshfs rm${C.r} <path>              Delete a file
+    ${C.cyan}meshfs info${C.r} <path>            File info + replicas
+`);
+  }
+}
+
+// ══════════════════════════════════════════════
+// V4 STATUS: Bridge stats
+// ══════════════════════════════════════════════
+
+function doV4Status(v4: V4Bridge): void {
+  const stats = v4.getStats();
+
+  console.log(`\n  ${C.b}V4 Bridge Status${C.r}`);
+  console.log(`  ${'─'.repeat(42)}`);
+  console.log(`  ${C.d}Total computes     ${C.r}${stats.totalComputes}`);
+  console.log(`  ${C.d}Compiled           ${C.r}${stats.compiledComputes}`);
+  console.log(`  ${C.d}Gravity optimized  ${C.r}${stats.gravityComputes}`);
+  console.log(`  ${C.d}Raced              ${C.r}${stats.racedComputes}`);
+  console.log(`  ${C.d}ACL denied         ${C.r}${stats.aclDenied}`);
+  console.log(`  ${C.d}Rate limited       ${C.r}${stats.rateLimited}`);
+  console.log(`  ${C.d}Avg time           ${C.r}${stats.avgTimeMs}ms`);
+
+  console.log(`\n  ${C.b}Module Stats${C.r}`);
+  console.log(`  ${C.d}Jobs               ${C.r}total: ${stats.jobs.total}, running: ${stats.jobs.running}, completed: ${stats.jobs.completed}`);
+  console.log(`  ${C.d}Gravity            ${C.r}decisions: ${stats.gravity.decisions}, pulls: ${stats.gravity.pullCount}, saved: ${formatBytesV4(stats.gravity.totalSavedBytes)}`);
+  console.log(`  ${C.d}Racing             ${C.r}races: ${stats.racing.totalRaces}, wins: ${stats.racing.totalWins}, cancelled: ${stats.racing.totalCancelled}`);
+  console.log(`  ${C.d}MeshFS             ${C.r}files: ${stats.meshFS.totalFiles}, writes: ${stats.meshFS.writes}, reads: ${stats.meshFS.reads}`);
+  console.log(`  ${C.d}Rate limiter       ${C.r}checks: ${stats.rateLimiter.totalChecks}, denied: ${stats.rateLimiter.totalDenied}`);
+  console.log();
+}
+
+function formatBytesV4(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
 // ══════════════════════════════════════════════

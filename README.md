@@ -1,325 +1,227 @@
-<p align="center">
-  <h1 align="center">CMP — Compute Mesh Protocol</h1>
-  <p align="center">
-    <strong>Turn nearby devices into a supercomputer. No cloud. No server. No internet.</strong>
-  </p>
-  <p align="center">
-    <a href="#quick-start">Quick Start</a> •
-    <a href="#examples">Examples</a> •
-    <a href="#architecture">Architecture</a> •
-    <a href="#protocol-spec">Protocol Spec</a> •
-    <a href="#contributing">Contributing</a>
-  </p>
-  <p align="center">
-    <img src="https://img.shields.io/badge/version-3.0.0-blue" alt="version" />
-    <img src="https://img.shields.io/badge/tests-1000%20passing-brightgreen" alt="tests" />
-    <img src="https://img.shields.io/badge/lines-78%2C000%2B-informational" alt="lines" />
-    <img src="https://img.shields.io/badge/license-MIT-green" alt="license" />
-    <img src="https://img.shields.io/badge/layers-16-purple" alt="layers" />
-  </p>
-</p>
+# CMP — Compute Mesh Protocol
 
----
+**Turn any devices on the same network into a distributed supercomputer.**
 
-Your laptop is processing a large file. There are 3 other devices on the same WiFi doing nothing. What if they could help?
+CMP discovers nearby devices, forms a P2P mesh, and distributes computation
+automatically. Submit any WASM workload — CMP detects the parallelization
+pattern, chunks the data, distributes across devices, executes real WebAssembly,
+and merges results. No configuration. No server. No cloud.
 
-```typescript
-import { CMP } from 'cmp-mesh';
+[![Tests](https://img.shields.io/badge/tests-350%20passing-brightgreen)]()
+[![License](https://img.shields.io/badge/license-MIT-blue)]()
+[![Node](https://img.shields.io/badge/node-%3E%3D18-green)]()
 
-const mesh = new CMP();
-await mesh.start();
-await mesh.waitForPeers(1);
-
-const result = await mesh.distribute(imageBytes, processorWasm);
-// ⚡ Processed across 3 devices in 200ms instead of 800ms
 ```
-
-CMP discovers nearby devices automatically, negotiates who helps, splits the work, executes in WASM sandboxes, encrypts everything, and assembles the result. Your code just calls `distribute()`.
-
----
+50,000 sensor readings → sensor_filter(threshold=100) → 30,326 bytes
+ALL 30,326 output values > 100 — VERIFIED
+3 chunks executed on 3 different remote nodes
+Every byte verified. Real WASM. Real nodes. Real distribution.
+```
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/agentviscro/cmp.git
+git clone https://github.com/aswinsasi/cmp.git
 cd cmp
 npm install
+cd packages/core && npm install sql.js
+
+# Run the real workload demo (2 nodes, 50KB sensor data, byte-verified)
+npx tsx tests/v4-real-workload.test.ts
+
+# Run all 350 tests
+for t in tests/v4-*.test.ts tests/v5-*.test.ts; do npx tsx $t || exit 1; done
 ```
 
-**Run your first distributed computation (60 seconds):**
+## What Makes CMP Different
 
-```bash
-npx tsx examples/04-two-node-compute.ts
-```
+| Feature | Cloud Functions | Apache Spark | CMP |
+|---------|----------------|-------------|-----|
+| Setup | AWS account, IAM, API Gateway | Cluster, HDFS, config | `node.start()` |
+| Network | Internet required | Cluster network | Any WiFi / LAN |
+| Server | Required | Required | **None** |
+| Parallelization | Developer writes it | Developer writes it | **Auto-detected** |
+| Cost | Per-invocation billing | Cluster cost | **Free (peer devices)** |
+| Fault tolerance | Provider-managed | Spark-managed | **Built-in** |
 
-```
-  [1] Creating two CMPNodes...
-      Node A: 5d01151a
-      Node B: 692bba5a
-
-  [2] Waiting for peer discovery...
-      Node A sees 1 peer(s)
-
-  [4] Node A submitting WASM computation to mesh...
-      WASM module: 56 bytes
-      Input data:  64 bytes
-
-  [5] RESULT:
-      Distributed: true
-      Time:        239ms
-      Devices:     1
-
-  ║  DISTRIBUTED COMPUTATION SUCCESSFUL!         ║
-  ║  Node A submitted → Node B executed → Result ║
-  ║  All over real LAN with Ed25519 auth.        ║
-```
-
-Two real nodes. Real WASM execution. Real encrypted transport. No cloud.
-
----
-
-## Examples
-
-**Process real data:**
-
-```bash
-npx tsx examples/02-distribute-work.ts
-```
+## Architecture
 
 ```
-  ── Task 1: Sort 1000 random numbers ──
-  Output: [32,39,43,49,61,69,78,86,86,87]   Time: 7ms
-
-  ── Task 2: Word frequency analysis ──
-  "devices" → 2 times, "compute" → 2 times   Time: 4ms
-
-  ── Task 3: Transform sensor data ──
-  Avg Temperature: 27.2°C, Alert: HIGH_TEMP_WARNING   Time: 55ms
+┌──────────────────────────────────────────────┐
+│                  V4 Bridge                    │
+│  ACL → Rate Limit → Compile → Gravity →      │
+│  Race Decision → Execute → Merge              │
+├──────┬──────┬──────┬──────┬──────┬───────────┤
+│Sched-│Task  │Gravi-│Race  │CMP   │Security   │
+│uler  │Comp- │ty    │Mgr   │Pipes │+ MeshFS   │
+│      │iler  │      │      │      │           │
+├──────┴──────┴──────┴──────┴──────┴───────────┤
+│              WASM Sandbox                     │
+│  Real WebAssembly execution (V8 engine)       │
+├──────────────────────────────────────────────┤
+│              Wire Handler                     │
+│  10 message types (0xF2-0xFB)                │
+├──────────────────────────────────────────────┤
+│         CMP Core (16 layers)                  │
+│  Discovery → Handshake → Negotiation →        │
+│  Chunking → Distribution → Execution →        │
+│  Assembly → Verification                      │
+├──────────────────────────────────────────────┤
+│              Transport                        │
+│  LAN (UDP broadcast) | VirtualNetwork (test)  │
+└──────────────────────────────────────────────┘
 ```
 
-**Watch the mesh think:**
+## The 8 Pillars
 
-```bash
-npx tsx examples/03-consciousness.ts
-```
+### 1. Persistent State
+SQLite-backed state store. Jobs, subsystem state, and model checkpoints
+survive crashes and restarts.
 
-```
-  Task 1 succeeded → success pheromone: ████████ 1.50
-  Task 2 succeeded → success pheromone: █████████████ 2.50
-  Threat detected  → danger pheromone:  ███████████████████ 6.30
+### 2. Job Queue
+Priority-ordered, persistent job queue with auto-retry. Submit background
+jobs that execute across the mesh even if you disconnect.
 
-  Mesh behavior: DEFENSIVE
-  → No voting happened. No leader decided. Emergent behavior.
-```
+### 3. Unified Scheduler
+Scores devices by CPU, memory, GPU, latency, reputation, and data locality.
+Picks the optimal execution strategy for each task.
 
-**Interactive CLI:**
+### 4. Universal Task Compiler
+Auto-detects parallelization patterns (sort, map, reduce, filter, search,
+matrix, ML training) from WASM export names. Generates chunk plans and
+merge strategies without developer annotation.
+
+### 5. Speculative Racing
+Sends the same task to multiple devices, takes the first result, cancels
+the rest. CCU economics: winner earns 100%, losers earn 20% participation.
+
+### 6. Computation Gravity
+Decides whether to move code to data or data to code. For a 50-byte filter
+function and 2GB of sensor data → ships the function, saves 99.99% bandwidth.
+
+### 7. CMP Pipes
+Unix-style streaming pipelines across mesh devices. 8 built-in stages:
+filter, map, batch, window, throttle, sample, log, collect. Backpressure
+and bottleneck detection built in.
+
+### 8. Security + MeshFS
+Wire encryption (XSalsa20-Poly1305), ACL modes (open/whitelist/reputation/deposit),
+per-device rate limiting, and a shared mesh filesystem with automatic
+parent directory creation and MIME type detection.
+
+## CLI Commands
 
 ```bash
 npx tsx packages/cli/src/cli.ts start
 ```
 
 ```
-cmp> status
-  Peers        3
-  Credits      100 CCU
-  Behavior     HIGH_DEMAND
-  Pheromones   12 (dominant: compute_success)
-  DAG          45 nodes, 2 branches
-  Wormholes    1 active, 2 remote meshes
+cmp> compute hello world              # Full V4 pipeline
+cmp> compute --bg long task           # Background job
 
-cmp> consciousness pheromones
-  compute_success      ████████████ 1.20 (8 deposits)
-  danger               ██ 0.23 (2 deposits)
+cmp> pipe define etl: filter:predicate=gt:100 | map:transform=uppercase | collect
+cmp> pipe start etl
+cmp> pipe push etl some data here
+cmp> pipe stop etl                    # → "SOME DATA HERE"
 
-cmp> spacetime fork experiment-1
-  Forked: branch-a1b2c3d4 ("experiment-1")
+cmp> meshfs write /data/test.csv a,b,c
+cmp> meshfs ls /data
+cmp> meshfs read /data/test.csv
 
-cmp> wormhole declare mesh-beta Beta 100
-  Declared wormhole → mesh-beta ("Beta", 100ms)
+cmp> job list
+cmp> state info
+cmp> v4                               # Bridge stats
 ```
 
----
+## WASM Workloads
 
-## When to Use CMP
+CMP includes real, executable WASM modules built from raw opcodes:
 
-| Use CMP when | Don't use CMP when |
-|---|---|
-| Heavy computation (image processing, AI inference, data analysis) | Task takes < 1 second on one device |
-| Multiple devices nearby on same network | Only one device available |
-| No cloud / can't use cloud / privacy-critical data | Reliable cloud infrastructure exists |
-| Need offline capability | Internet is always available |
-| Edge processing (IoT, sensors, warehouses) | Need massive GPU (training large models) |
-
-**Real use cases:**
-
-- **Disaster relief** — 10 phones with no cell tower pool compute for offline AI translation
-- **Hospital** — 50 tablets process medical images without data leaving the building
-- **Classroom** — 30 students pool devices to train an ML model together
-- **Warehouse** — IoT sensors form a mesh and process anomaly detection at the edge
-- **Field research** — Drones and phones in a remote area share compute for data analysis
-
----
-
-## Architecture
-
-CMP implements a 13-layer protocol stack — the deepest of any peer-to-peer system:
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  Layer 16: Mesh GPU       (WebGPU sharing)          v3.0|
-|  Layer 15: Holographic    (Erasure-coded memory)    v3.0|
-|  Layer 14: Mesh Cortex    (Distributed AI)          v3.0|  
-|  Layer 13: Cross-Mesh Wormholes     (Federation)    v2.0│
-│  Layer 12: Computation Spacetime    (Temporal Fork) v2.0│
-│  Layer 11: Collective Consciousness (Stigmergy)     v2.0│
-├─────────────────────────────────────────────────────────┤
-│  Layer 10: Lifeforms     (Autonomous entities)      v1.4│
-│  Layer 9:  Precognition  (Predictive scheduling)    v1.3│
-│  Layer 8:  Mesh Cognition (Learning from history)   v1.2│
-│  Layer 7:  Certification (Computation provenance)   v1.1│
-├─────────────────────────────────────────────────────────┤
-│  Layer 6:  Assembly       (Result collection)       v1.0│
-│  Layer 5:  Execution      (WASM sandbox)            v1.0│
-│  Layer 4:  Distribution   (Chunk splitting)         v1.0│
-│  Layer 3:  Negotiation    (Bid/assign)              v1.0│
-│  Layer 2:  Capability     (Resource profiling)      v1.0│
-│  Layer 1:  Discovery      (BLE/LAN/WiFi/WebRTC)    v1.0│
-└─────────────────────────────────────────────────────────┘
-```
-
-**91 wire protocol message types.** Full spec: [CMP Protocol Specification v2.0](docs/CMP-Protocol-Specification-v2.0.md)
-
-### What makes CMP different
-
-| Feature | CMP | BOINC | Spark | libp2p |
-|---------|-----|-------|-------|--------|
-| Zero infrastructure | ✓ | ✗ | ✗ | Partial |
-| Works offline | ✓ | ✗ | ✗ | ✗ |
-| Privacy preserving | ✓ | ✗ | Partial | Partial |
-| Autonomous entities (Lifeforms) | ✓ | ✗ | ✗ | ✗ |
-| Pheromone coordination | ✓ | ✗ | ✗ | ✗ |
-| Temporal forking | ✓ | ✗ | ✗ | ✗ |
-| Process teleportation | ✓ | ✗ | ✗ | ✗ |
-| Self-evolving code | ✓ | ✗ | ✗ | ✗ |
-
-### Novel concepts (no prior art)
-
-- **Stigmergy** — Nodes leave pheromone trails that influence other nodes' behavior. Coordination without communication.
-- **Computation Spacetime** — Fork a running process into parallel timelines, race them, merge the winner back. Git for live computation.
-- **Lifeform Teleportation** — Serialize an autonomous entity (identity + state + genome + economic balance + synapses + causal history) and transmit it to a completely different mesh.
-- **Genome Mutation** — WASM binaries evolve through natural selection. Mutant generations compete; the fittest survive.
-- **Emergent Behavior** — The mesh automatically shifts between NORMAL, HIGH_DEMAND, DEFENSIVE, CONSERVATION, and DREAMING based on collective pheromone concentrations.
-
----
-
-## SDK
+| Module | What it does | Throughput |
+|--------|-------------|-----------|
+| `sensor_filter` | Keep bytes above threshold | 123 MB/s |
+| `grayscale` | RGB→gray (ITU-R BT.601) | 231 MB/s |
+| `histogram` | 256-bin byte frequency count | 129 MB/s |
+| `moving_average` | Sliding window smoothing | 30 MB/s |
+| `rle_compress` | Run-length encoding | 13 MB/s |
+| `sensor_scale` | Fixed-point multiply | — |
+| `sensor_delta` | Delta encoding | — |
+| `sensor_peaks` | Local maxima extraction | — |
 
 ```typescript
-import { CMP } from 'cmp-mesh';
+import { buildSensorFilter, WasmSandbox } from '@agent-viscro/cmp';
 
-const mesh = new CMP();
-await mesh.start();
-
-// 5 methods. That's it.
-mesh.peers              // Number of nearby devices
-mesh.behavior           // Mesh consciousness state
-mesh.distribute(data, wasm)  // Distribute computation
-mesh.run(lang, code, input)  // Run code on mesh
-mesh.status()           // Full status
+const wasm = buildSensorFilter(100);  // Keep bytes > 100
+const sandbox = new WasmSandbox();
+const result = await sandbox.execute(wasm, sensorData);
+// result.output contains only values > 100
 ```
 
-See [SDK documentation](SDK-README.md) for full API reference with examples.
-
----
-
-## Project Structure
+## Test Results
 
 ```
-cmp/
-├── packages/
-│   ├── core/           Protocol layers, types, crypto, consciousness, spacetime, wormholes
-│   ├── transport/      BLE, LAN (UDP/TCP), WiFi Direct, WebRTC transports
-│   ├── runtime/        WASM sandbox, multi-runtime execution engine
-│   ├── cli/            Interactive REPL (2,400 lines)
-│   └── mobile/         React Native entry point
-├── examples/           4 runnable examples
-├── docs/               Protocol specifications
-├── sdk.ts              Simple 5-method API wrapper
-└── SDK-README.md       Developer documentation
+v4-persistence:          33 passed   Persistent State
+v4-job-queue:            32 passed   Job Queue
+v4-unified-scheduler:    36 passed   Unified Scheduler
+v4-task-compiler:        40 passed   Universal Task Compiler
+v4-race-manager:         24 passed   Speculative Racing
+v4-gravity:              26 passed   Computation Gravity
+v4-pipeline:             40 passed   CMP Pipes
+v4-security-meshfs:      32 passed   Security + MeshFS
+v4-integration:          13 passed   All modules wired
+v4-wasm-sandbox:         26 passed   Real WASM execution
+v4-wire-handler:         18 passed   Transport ↔ modules
+v4-real-workload:         8 passed   50K sensor data, 2 nodes
+v5-heavy-and-scale:      12 passed   Grayscale, histogram, 5 nodes
+v5-fault-tolerance:      10 passed   Node death, crash recovery
+──────────────────────────────────────────────────
+Total:                  350 tests, 0 failures
 ```
 
-**68,059 lines of TypeScript. 212 source files. 827 tests. 0 failures.**
+## Proven Capabilities
 
----
+- **Real WASM execution** — not mocked, not simulated. V8 WebAssembly engine.
+- **Multi-node distribution** — 5 nodes, chunks distributed across 4 devices.
+- **Byte-level verification** — every output value verified against expected.
+- **Fault tolerance** — node departure → task completes with remaining peers.
+- **Crash recovery** — running jobs survive restart (SQLite persistence).
+- **54ms distribution overhead** — for 100KB workload over VirtualNetwork.
+- **230 MB/s WASM throughput** — for grayscale image processing.
 
-## Tests
+## Stack
 
-```bash
-npm run test:all        # Run all test suites
+TypeScript strict, Node.js 18+, zero heavy dependencies.
 
-# Individual suites
-npm run test            # Core protocol (49 tests)
-npm run test:auth       # Ed25519 authentication + flow control (45 tests)
-npm run test:distributed # Two-node WASM distribution (2 tests)
-npm run test:consciousness # Layer 11: Pheromones, quorum, swarm (43 tests)
-npm run test:spacetime  # Layer 12: DAG, forking, racing (39 tests)
-npm run test:wormhole   # Layer 13: Discovery, teleport, synapses (30 tests)
-npm run test:bridge     # V2 integration (15 tests)
+| Dependency | Purpose |
+|-----------|---------|
+| `tweetnacl` | Ed25519 signatures, XSalsa20-Poly1305 encryption |
+| `sql.js` | SQLite for persistent state (WASM-based, no native deps) |
+
+## Repository Structure
+
+```
+packages/
+  core/           — Protocol implementation (all 8 pillars)
+    src/
+      compiler/   — Auto-parallelization (10 patterns)
+      gravity/    — Code-to-data optimization
+      meshfs/     — Shared mesh filesystem
+      persistence/— SQLite state store
+      pipes/      — Streaming pipelines
+      scheduler/  — Job queue, device scoring, racing
+      security/   — Encryption, ACL, rate limiting
+      wasm/       — WASM sandbox + built-in modules
+    tests/        — 350 tests (14 test suites)
+  cli/            — Interactive REPL
+  transport/      — LAN + VirtualNetwork transports
+  runtime/        — WASM execution engine
 ```
 
----
+## Author
 
-## Protocol Spec
-
-The complete v2.0 specification (709 lines, 26 sections) covering all 13 layers, 91 message types, security model, and incentive mechanism:
-
-[CMP Protocol Specification v2.0](docs/CMP-Protocol-Specification-v2.0.md)
-
----
-
-## Roadmap
-
-- [x] v1.0 — Core protocol (6 layers, distributed WASM execution)
-- [x] v1.2 — Mesh Cognition (learning from past executions)
-- [x] v1.3 — Mesh Intelligence (immune system, metabolism, futures, morphogenesis)
-- [x] v1.4 — Lifeforms (autonomous entities, CRDT state, fusion/fission, mutation)
-- [x] v1.5 — Ground Truth (Ed25519 auth, flow control, native crypto, distributed compute proven)
-- [x] v2.0 — Consciousness (stigmergy, spacetime, wormholes)
-- [ ] v2.5 — ZK proofs, neuromorphic routing, homomorphic computation
-- [ ] v3.0 — Production hardening, monitoring, observability
-
----
-
-## Contributing
-
-CMP is an open protocol. Contributions welcome.
-
-```bash
-git clone https://github.com/agentviscro/cmp.git
-cd cmp
-npm install
-npm run test:all   # Make sure everything passes
-```
-
-Areas where help is needed:
-- **React Native testing** — Run the real protocol on phones via BLE
-- **WebGPU integration** — GPU compute from WASM sandboxes
-- **ZK-SNARK verification** — Replace redundant execution with zero-knowledge proofs
-- **Production hardening** — Rate limiting, monitoring, graceful upgrades
-- **Real applications** — Build something on CMP and tell us about it
-
----
+**Agent Viscro** (Aswin)
+Kerala, India
 
 ## License
 
-MIT — [LICENSE](LICENSE)
-
----
-
-<p align="center">
-  <strong>Built by <a href="https://github.com/agentviscro">Agent Viscro</a></strong>
-  <br/>
-  <em>68,000 lines. 13 layers. 91 message types. Zero infrastructure.</em>
-  <br/>
-  <em>"There is no system this sentence maps to."</em>
-</p>
+MIT

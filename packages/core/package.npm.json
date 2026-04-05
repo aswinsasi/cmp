@@ -1,0 +1,71 @@
+{
+  "name": "@agent-viscro/cmp",
+  "version": "5.0.0",
+  "description": "Compute Mesh Protocol — Turn any devices on the same network into a distributed supercomputer",
+  "author": "Agent Viscro (Aswin)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aswinsasi/cmp"
+  },
+  "homepage": "https://github.com/aswinsasi/cmp#readme",
+  "keywords": [
+    "distributed-computing",
+    "mesh-network",
+    "p2p",
+    "supercomputer",
+    "wasm",
+    "webassembly",
+    "edge-computing",
+    "parallel-computing",
+    "auto-parallelization",
+    "streaming-pipeline"
+  ],
+  "main": "dist/v4-public-api.js",
+  "types": "dist/v4-public-api.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/v4-public-api.js",
+      "require": "./dist/v4-public-api.js",
+      "types": "./dist/v4-public-api.d.ts"
+    },
+    "./wasm": {
+      "import": "./dist/wasm/builtin-wasm-modules.js",
+      "types": "./dist/wasm/builtin-wasm-modules.d.ts"
+    },
+    "./pipes": {
+      "import": "./dist/pipes/pipeline-manager.js",
+      "types": "./dist/pipes/pipeline-manager.d.ts"
+    },
+    "./workloads": {
+      "import": "./dist/wasm/workload-modules.js",
+      "types": "./dist/wasm/workload-modules.d.ts"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "tsx tests/run-all.ts",
+    "test:unit": "for t in tests/v4-*.test.ts; do tsx $t || exit 1; done",
+    "test:scale": "tsx tests/v5-heavy-and-scale.test.ts",
+    "test:fault": "tsx tests/v5-fault-tolerance.test.ts",
+    "test:workload": "tsx tests/v4-real-workload.test.ts",
+    "clean": "rm -rf dist/",
+    "prepublishOnly": "npm run clean && npm run build && npm test"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "sql.js": "^1.8.0",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "tsx": "^4.0.0",
+    "typescript": "^5.3.0"
+  }
+}
