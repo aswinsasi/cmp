@@ -1,0 +1,13 @@
+workload,data_size,bytes,local_wasm_ms,overhead_8n_ms,correct
+SensorFilter(>100),1KB,1024,2.40,182,true
+SensorFilter(>100),10KB,10240,0.47,197,true
+SensorFilter(>100),100KB,102400,0.51,220,true
+SensorFilter(>100),500KB,512000,0.62,315,true
+SensorScale(x2),1KB,1024,0.63,186,true
+SensorScale(x2),10KB,10240,3.94,178,true
+SensorScale(x2),100KB,102400,3.03,262,true
+SensorScale(x2),500KB,512000,0.70,653,true
+RGB→Grayscale,1KB,1024,0.70,252,true
+RGB→Grayscale,10KB,10240,0.86,258,true
+RGB→Grayscale,100KB,102400,1.16,300,true
+RGB→Grayscale,500KB,512000,1.25,521,true
