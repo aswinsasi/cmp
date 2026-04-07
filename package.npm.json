@@ -1,28 +1,40 @@
 {
-  "name": "@agent-viscro/cmp",
-  "version": "5.0.0",
+  "name": "cmp-protocol",
+  "version": "5.0.1",
   "description": "World's first self-learning self-parallelizing distributed supercomputer protocol. Zero-config, zero-blockchain peer-to-peer WASM mesh computer.",
   "main": "packages/core/src/v5-public-api.ts",
+  "bin": {
+    "cmp": "packages/cli/src/cli.ts"
+  },
   "files": [
     "packages/core/src/",
     "packages/runtime/src/",
     "packages/transport/src/",
+    "packages/cli/src/",
+    "packages/mobile/",
+    "packages/modules/src/",
+    "packages/visualizer/",
+    "packages/signal-server/",
+    "packages/demos/",
+    "packages/core/benchmarks/",
+    "packages/core/tests/",
     "packages/core/NPM-README.md",
     "packages/core/PROTOCOL-SPEC.md",
-    "LICENSE"
+    "examples/",
+    "docs/",
+    "spec/",
+    "tools/",
+    "LICENSE",
+    "README.md",
+    "SDK-README.md",
+    "CONTRIBUTING.md",
+    "sdk.ts"
   ],
   "keywords": [
-    "distributed-computing",
-    "mesh-network",
-    "p2p",
-    "supercomputer",
-    "wasm",
-    "webassembly",
-    "auto-parallelization",
-    "self-learning",
-    "zero-config",
-    "computation-gravity",
-    "phylogenetics"
+    "distributed-computing", "mesh-network", "p2p", "supercomputer",
+    "wasm", "webassembly", "auto-parallelization", "self-learning",
+    "zero-config", "computation-gravity", "phylogenetics",
+    "peer-to-peer", "edge-computing", "mesh-computer"
   ],
   "author": "Agent Viscro (Aswin)",
   "license": "MIT",
@@ -31,9 +43,7 @@
     "url": "https://github.com/aswinsasi/cmp"
   },
   "homepage": "https://github.com/aswinsasi/cmp#readme",
-  "engines": {
-    "node": ">=18.0.0"
-  },
+  "engines": { "node": ">=18.0.0" },
   "dependencies": {
     "sql.js": "^1.8.0",
     "tweetnacl": "^1.0.3"
