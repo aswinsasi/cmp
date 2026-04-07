@@ -1,0 +1,35 @@
+{
+  "name": "cmp",
+  "version": "5.0.0",
+  "private": true,
+  "description": "Compute Mesh Protocol — Distributed WASM Supercomputer from Everyday Devices",
+  "author": "Agent Viscro <aswinsasi@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aswinsasi/cmp.git"
+  },
+  "workspaces": [
+    "packages/core",
+    "packages/transport",
+    "packages/runtime",
+    "packages/cli",
+    "packages/signal-server",
+    "packages/visualizer",
+    "packages/modules"
+  ],
+  "scripts": {
+    "test": "npm run test:core && npm run test:v5",
+    "test:core": "cd packages/core && npx tsx tests/v4-persistence.test.ts && npx tsx tests/v4-job-queue.test.ts && npx tsx tests/v4-unified-scheduler.test.ts && npx tsx tests/v4-task-compiler.test.ts && npx tsx tests/v4-race-manager.test.ts && npx tsx tests/v4-gravity.test.ts && npx tsx tests/v4-pipeline.test.ts && npx tsx tests/v4-security-meshfs.test.ts && npx tsx tests/v4-integration.test.ts && npx tsx tests/v4-wasm-sandbox.test.ts && npx tsx tests/v4-wire-handler.test.ts && npx tsx tests/v4-real-workload.test.ts",
+    "test:v5": "cd packages/core && npx tsx tests/v5-fault-tolerance.test.ts && npx tsx tests/v5-heavy-and-scale.test.ts && npx tsx tests/v5-killer-app.test.ts",
+    "test:adapter": "cd packages/core && npx tsx tests/v5-wasm-adapter.test.ts",
+    "test:transport": "cd packages/core && npx tsx tests/v5-lan-integration.test.ts",
+    "test:all": "npm run test && npm run test:adapter && npm run test:transport",
+    "demo": "cd packages/visualizer && npx tsx demo.ts",
+    "cli": "cd packages/cli && npx tsx src/cli.ts",
+    "signal-server": "cd packages/signal-server && npx tsx src/server.ts"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
