@@ -30,6 +30,8 @@ import {
 } from './compiler-types';
 import { PatternDetector, parseWasmExports } from './pattern-detector';
 import { PlanGenerator } from './plan-generator';
+import { analyzeInputStructure, InputFormat } from './input-analyzer';
+import { verifyMergeCorrectness, VerificationResult } from './merge-verifier';
 
 const log = new Logger('Compiler');
 
@@ -42,6 +44,8 @@ export interface CompileResult {
   allMatches: PatternMatch[];
   /** Time taken to compile (ms) */
   compileTimeMs: number;
+  /** Original input data (stored for merge verification) */
+  inputData: Uint8Array;
 }
 
 // ─── Task Compiler ───
@@ -81,7 +85,20 @@ export class TaskCompiler {
       meta = { ...meta, availableDevices: 1, deviceIds: meta.deviceIds.slice(0, 1) };
     }
 
-    // Detect patterns
+    // ── Auto-detect input structure (element size, record boundaries) ──
+    if (!meta.elementSizeBytes) {
+      try {
+        const inputStructure = analyzeInputStructure(inputData);
+        if (inputStructure.elementSize > 1) {
+          meta = { ...meta, elementSizeBytes: inputStructure.elementSize };
+          log.info(`Input analysis: ${inputStructure.format}, element size: ${inputStructure.elementSize} bytes`);
+        }
+      } catch {
+        // Input analysis failed, continue with default
+      }
+    }
+
+    // Detect patterns (includes bytecode analysis)
     const allMatches = this.detector.detect(wasmModule, inputData, meta);
     const bestMatch = this.detector.detectBest(wasmModule, inputData, meta);
 
@@ -101,7 +118,7 @@ export class TaskCompiler {
       `${plan.chunkCount} chunks, ${compileTimeMs}ms`
     );
 
-    return { plan, allMatches, compileTimeMs };
+    return { plan, allMatches, compileTimeMs, inputData };
   }
 
   /**
@@ -125,6 +142,31 @@ export class TaskCompiler {
     );
 
     return mergeResult;
+  }
+
+  /**
+   * Verify merge correctness by comparing distributed result
+   * with local execution on a small sample.
+   *
+   * Call this after mergeResults() to prove the parallelization
+   * produced the correct output.
+   *
+   * @param compileResult - Result from compile()
+   * @param mergedData - Output from mergeResults()
+   * @returns Verification result (passed/failed + details)
+   */
+  async verifyMerge(
+    compileResult: CompileResult,
+    mergedData: Uint8Array,
+  ): Promise<VerificationResult> {
+    const elementSize = compileResult.plan.meta.elementSize ?? 1;
+    return verifyMergeCorrectness(
+      compileResult.plan.wasmModule,
+      compileResult.inputData,
+      mergedData,
+      compileResult.plan.meta.entryPoint ?? 'process',
+      elementSize,
+    );
   }
 
   /**

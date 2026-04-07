@@ -19,6 +19,9 @@ import {
   IPattern, ParallelPattern, PatternMatch, TaskMeta,
   TaskCompilerConfig, DEFAULT_COMPILER_CONFIG,
 } from './compiler-types';
+import {
+  analyzeWasmBytecode, StructuralPattern, BytecodeAnalysis,
+} from './bytecode-analyzer';
 
 // Import all patterns
 import { SortPattern, MapPattern, ReducePattern, FilterPattern, SearchPattern } from './patterns/data-patterns';
@@ -167,6 +170,8 @@ function readLEB128(data: Uint8Array, offset: number): { value: number; bytesRea
 export class PatternDetector {
   private registry: PatternRegistry;
   private config: TaskCompilerConfig;
+  /** Last bytecode analysis result (accessible for input-aware splitting) */
+  public lastBytecodeAnalysis: BytecodeAnalysis | null = null;
 
   constructor(config: Partial<TaskCompilerConfig> = {}) {
     this.registry = new PatternRegistry();
@@ -186,12 +191,54 @@ export class PatternDetector {
     const wasmExports = parseWasmExports(wasmModule);
     meta = { ...meta, wasmExports };
 
-    // Run all detectors
+    // ── Deep bytecode analysis (CMP's novel contribution) ──
+    let bytecodeAnalysis: BytecodeAnalysis | null = null;
+    try {
+      bytecodeAnalysis = analyzeWasmBytecode(wasmModule, meta.entryPoint);
+      this.lastBytecodeAnalysis = bytecodeAnalysis;
+    } catch {
+      log.debug('Bytecode analysis failed, falling back to export-name detection');
+    }
+
+    // Run all detectors (export-name based)
     const matches: PatternMatch[] = [];
     for (const pattern of this.registry.getAll()) {
       const match = pattern.detect(wasmExports, inputData, meta);
       if (match.confidence > 0) {
         matches.push(match);
+      }
+    }
+
+    // ── Boost/adjust confidence using bytecode analysis ──
+    if (bytecodeAnalysis && bytecodeAnalysis.confidence > 0.3) {
+      const structuralToPattern: Record<string, ParallelPattern> = {
+        [StructuralPattern.LINEAR_MAP]: ParallelPattern.MAP,
+        [StructuralPattern.LINEAR_FILTER]: ParallelPattern.FILTER,
+        [StructuralPattern.LINEAR_REDUCE]: ParallelPattern.REDUCE,
+        [StructuralPattern.COMPARE_REORDER]: ParallelPattern.SORT,
+        [StructuralPattern.MULTI_PASS]: ParallelPattern.MAP,
+        [StructuralPattern.FIXED_OUTPUT]: ParallelPattern.REDUCE,
+      };
+
+      const bytecodePattern = structuralToPattern[bytecodeAnalysis.structuralPattern];
+      if (bytecodePattern) {
+        // Boost the matching pattern's confidence
+        const existing = matches.find(m => m.pattern === bytecodePattern);
+        if (existing) {
+          existing.confidence = Math.min(0.98, existing.confidence + bytecodeAnalysis.confidence * 0.3);
+          existing.reason += ` [Bytecode confirms: ${bytecodeAnalysis.explanation}]`;
+        } else {
+          // Bytecode detected a pattern that export names missed — add it
+          matches.push({
+            pattern: bytecodePattern,
+            confidence: bytecodeAnalysis.confidence * 0.8,
+            reason: `Bytecode analysis: ${bytecodeAnalysis.explanation}`,
+            suggestedChunks: Math.min(meta.availableDevices, 8),
+            orderPreserving: bytecodeAnalysis.structuralPattern !== StructuralPattern.COMPARE_REORDER,
+          });
+        }
+
+        log.info(`Bytecode analysis boosted ${bytecodePattern}: ${bytecodeAnalysis.explanation}`);
       }
     }
 

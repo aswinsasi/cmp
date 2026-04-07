@@ -108,6 +108,31 @@ export { ParallelPattern, MergeType } from './compiler/compiler-types';
 export type { CompilationPlan, TaskMeta, PatternMatch } from './compiler/compiler-types';
 
 // ═══════════════════════════════════════════
+// SCHEDULING: Bytecode Analysis (World's First)
+// ═══════════════════════════════════════════
+
+export { analyzeWasmBytecode, StructuralPattern, OutputRatio, MemoryPattern } from './compiler/bytecode-analyzer';
+export type { BytecodeAnalysis, FunctionAnalysis } from './compiler/bytecode-analyzer';
+export { analyzeInputStructure, splitAtBoundaries, InputFormat } from './compiler/input-analyzer';
+export type { InputStructure } from './compiler/input-analyzer';
+export { verifyMergeCorrectness } from './compiler/merge-verifier';
+export type { VerificationResult } from './compiler/merge-verifier';
+
+// ═══════════════════════════════════════════
+// SCHEDULING: Self-Learning (World's First)
+// ═══════════════════════════════════════════
+
+export { LearningBridge, createFingerprint } from './compiler/learning-bridge';
+export type { ComputationFingerprint, LearningRecommendation } from './compiler/learning-bridge';
+
+// ═══════════════════════════════════════════
+// SCHEDULING: Computational Phylogenetics (World's First)
+// ═══════════════════════════════════════════
+
+export { PhylogeneticsEngine, encodeGenome, PhylogeneticIndex, StrategyInheritor } from './compiler/phylogenetics';
+export type { ComputationGenome, AncestorMatch, InheritedStrategy, LearnedStrategy } from './compiler/phylogenetics';
+
+// ═══════════════════════════════════════════
 // SCHEDULING: Unified Scheduler
 // ═══════════════════════════════════════════
 

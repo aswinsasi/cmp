@@ -70,6 +70,11 @@ import type { DecompositionPlan, RuntimeType } from '../../runtime/src';
 import { MCLEngine } from './mcl/engine';
 import type { TaskCompletionData } from './mcl/engine';
 
+import { analyzeWasmBytecode } from './compiler/bytecode-analyzer';
+import { analyzeInputStructure, splitAtBoundaries } from './compiler/input-analyzer';
+import { LearningBridge } from './compiler/learning-bridge';
+import { PhylogeneticsEngine } from './compiler/phylogenetics';
+
 const log = new Logger('CMPNode');
 
 // ── Public API Types ──
@@ -178,6 +183,8 @@ export class CMPNode {
   private certificates = new Map<string, ComputationCertificate>();
   /** Mesh Cognition Layer engine (v1.2) */
   private mclEngine: MCLEngine;
+  private learningBridge: LearningBridge;
+  private phylogenetics: PhylogeneticsEngine;
 
   /** Optional Lifeform transport handler (v1.4) */
   private lifeformHandler: any | null = null;
@@ -324,6 +331,12 @@ export class CMPNode {
       config: this.config.mcl,
     });
 
+    // Self-learning parallelization bridge
+    this.learningBridge = new LearningBridge();
+
+    // Computational Phylogenetics — zero-shot strategy inheritance
+    this.phylogenetics = new PhylogeneticsEngine();
+
     // Layers 11-13: Consciousness, Spacetime, Wormholes (v2.0)
     this.v2bridge = new V2Bridge(this);
   }
@@ -372,6 +385,13 @@ export class CMPNode {
       await this.mclEngine.initPersistence(this.config.mcl.merDbPath);
     }
     this.mclEngine.start();
+
+    // Initialize self-learning persistence (same directory as MCL)
+    if (this.config.mcl.merDbPath) {
+      const path = require('path');
+      const learningDbPath = path.join(path.dirname(this.config.mcl.merDbPath), 'learning.db');
+      await this.learningBridge.initPersistence(learningDbPath);
+    }
 
     // Start v2.0 layers
     if (this.v2bridge) this.v2bridge.start();
@@ -578,6 +598,53 @@ export class CMPNode {
       entryPoint,
     };
 
+    // ── Self-Parallelizing Analysis (CMP's novel contribution) ──
+    // Analyze WASM bytecode to understand the computation pattern
+    try {
+      const bytecodeResult = analyzeWasmBytecode(wasmModule, entryPoint);
+      log.info(`Bytecode analysis: ${bytecodeResult.structuralPattern} (${(bytecodeResult.confidence * 100).toFixed(0)}%) — ${bytecodeResult.explanation}`);
+    } catch {
+      log.debug('Bytecode analysis skipped');
+    }
+
+    // Analyze input structure to determine element boundaries
+    let detectedElementSize = 1;
+    let inputStructure: ReturnType<typeof analyzeInputStructure> | null = null;
+    try {
+      inputStructure = analyzeInputStructure(inputData);
+      if (inputStructure.elementSize > 1) {
+        detectedElementSize = inputStructure.elementSize;
+        log.info(`Input structure: ${inputStructure.format}, element size: ${detectedElementSize} bytes`);
+      }
+    } catch {
+      log.debug('Input structure analysis skipped');
+    }
+
+    // ── Self-Learning: check execution history for optimal strategy ──
+    const fingerprint = this.learningBridge.analyze(wasmModule, entryPoint);
+    const peerCount = negotiationResult.assignments.length;
+    const learningRec = this.learningBridge.recommend(fingerprint, inputData.length, peerCount);
+
+    // Override chunkHint with learned optimal value (if available)
+    let effectiveChunkHint = request.chunkHint ?? 0;
+    if (learningRec && learningRec.confidence > 0.3 && effectiveChunkHint === 0) {
+      effectiveChunkHint = learningRec.chunkCount;
+      log.info(`Learning override: ${learningRec.chunkCount} chunks (${learningRec.explanation})`);
+    }
+
+    // ── Phylogenetic Inheritance: if no direct history, inherit from ancestor ──
+    if (!learningRec && effectiveChunkHint === 0) {
+      try {
+        const inherited = this.phylogenetics.analyzeAndInherit(wasmModule, entryPoint, peerCount);
+        if (inherited && inherited.confidence > 0.3) {
+          effectiveChunkHint = inherited.chunkCount;
+          log.info(`Phylogenetic inheritance: ${inherited.chunkCount} chunks from "${inherited.ancestorLabel}" (${(inherited.similarity * 100).toFixed(0)}% similar)`);
+        }
+      } catch {
+        log.debug('Phylogenetic inheritance skipped');
+      }
+    }
+
     // Build the task request for the distributor
     const taskRequest = {
       taskId: negotiationResult.taskId,
@@ -591,7 +658,7 @@ export class CMPNode {
         verifyMode: request.security?.verifyMode ?? VerifyMode.CHECKSUM,
         dataSensitivity: request.security?.dataSensitivity ?? SecurityLevel.PRIVATE,
       },
-      chunkHint: request.chunkHint ?? 0,
+      chunkHint: effectiveChunkHint,
       priority: request.priority ?? Priority.NORMAL,
       creditsOffered: 10,
       signature: new Uint8Array(64),
@@ -603,6 +670,19 @@ export class CMPNode {
       inputData,
       codeRef
     );
+
+    // ── Override chunk splitting with element-aligned splits ──
+    // If input analysis detected structure (RGB, CSV, etc.),
+    // replace the distributor's dumb byte-split with aligned chunks.
+    if (inputStructure && detectedElementSize > 1 && plan.inputChunks.length > 1) {
+      const alignedChunks = splitAtBoundaries(inputData, inputStructure, plan.inputChunks.length);
+      if (alignedChunks.length === plan.inputChunks.length) {
+        for (let i = 0; i < alignedChunks.length; i++) {
+          plan.inputChunks[i] = alignedChunks[i];
+        }
+        log.info(`Chunks re-aligned to ${inputStructure.format} boundaries (${detectedElementSize}-byte elements)`);
+      }
+    }
 
     log.info(`Distributed: ${plan.chunks.length} chunks across ${negotiationResult.assignments.length} devices`);
 
@@ -1426,6 +1506,38 @@ export class CMPNode {
 
       // MCL: Generate MER from task completion (v1.2)
       let mclExperienceGenerated = false;
+
+      // ── Self-Learning: record execution for future optimization ──
+      try {
+        const fp = this.learningBridge.analyze(
+          pending.wasmModule, pending.entryPoint
+        );
+        this.learningBridge.recordResult(
+          fp,
+          pending.inputData?.length ?? 0,
+          completion.chunksExecuted,
+          completion.devicesUsed,
+          completion.totalTimeMs,
+          completion.verificationResult.valid,
+        );
+      } catch {
+        log.debug('Learning bridge recording skipped');
+      }
+
+      // ── Phylogenetic: register as ancestor for future computations ──
+      try {
+        this.phylogenetics.recordExecution(
+          pending.wasmModule,
+          pending.entryPoint,
+          completion.chunksExecuted,
+          completion.totalTimeMs,
+          1, // elementSize
+          completion.verificationResult.valid,
+        );
+      } catch {
+        log.debug('Phylogenetic recording skipped');
+      }
+
       if (this.mclEngine.isActive()) {
         const mer = this.mclEngine.onTaskComplete({
           taskType: 0, // TaskType from pending task (default: INFERENCE)
